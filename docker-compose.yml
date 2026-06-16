@@ -82,7 +82,19 @@ services:
     volumes:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
-
+  mariadb-mcp:
+    build:
+      context: .
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: mariadb-mcp
+    env_file: /etc/hydra-headless-ts/mariadb-mcp.env
+    ports:
+      - "9001:9001"
+    volumes:
+      - /var/log/bondlink:/var/log/bondlink
+    restart: unless-stopped
 networks:
   hydra-net:
     driver: bridge
