@@ -15,6 +15,8 @@ const router = express.Router()
  */
 const mapErrorToHttp = (error: AppError): { status: number; message: string } => {
   switch (error._tag) {
+    case 'UnauthorizedEmail':
+      return { status: 403, message: 'Email not authorized to access this service' }
     case 'GoogleAuthError':
       return {
         status: 400,

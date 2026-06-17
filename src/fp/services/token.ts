@@ -5,6 +5,7 @@
  */
 import { Effect } from 'effect'
 import crypto from 'crypto'
+import { decodeJwt } from 'jose'
 import {
   PKCEStateSchema,
   AuthCodeDataSchema,
@@ -14,7 +15,9 @@ import {
 import {
   type AppError,
   MissingParameter,
+  UnauthorizedEmail,
 } from '../errors.js'
+import { isEmailAllowed } from './emailAllowlist.js'
 import { validatePKCE, parseScopeString, validateScopes } from '../validation.js'
 import { GoogleOAuthService } from './google.js'
 import { JWTService } from './jwt.js'
@@ -161,6 +164,18 @@ export const processRefreshTokenGrant = (
       jwtRefreshData.jti,
       GoogleTokenDataSchema
     )
+
+    // Step 3.5: Re-validate email from stored Google ID token
+    if (googleTokenData.google_id_token) {
+      const idPayload = decodeJwt(googleTokenData.google_id_token)
+      const email = typeof idPayload['email'] === 'string' ? idPayload['email'] : undefined
+      if (!email || !isEmailAllowed(email)) {
+        yield* Effect.logWarn('Blocked unauthorized email at token refresh').pipe(
+          Effect.annotateLogs({ email: email ?? '<missing>', jti: jwtRefreshData.jti })
+        )
+        return yield* Effect.fail(new UnauthorizedEmail({ email: email ?? '<missing>' }))
+      }
+    }
 
     // Step 4: Validate scopes if requested
     if (grant.scope) {

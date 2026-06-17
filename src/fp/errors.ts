@@ -94,6 +94,10 @@ export class ExpiredToken extends Data.TaggedError('ExpiredToken')<{
   tokenType: 'auth_code' | 'refresh_token'
 }> {}
 
+export class UnauthorizedEmail extends Data.TaggedError('UnauthorizedEmail')<{
+  email: string
+}> {}
+
 export type OAuthError =
   | InvalidPKCE
   | InvalidGrant
@@ -101,6 +105,7 @@ export type OAuthError =
   | InvalidClient
   | MissingParameter
   | ExpiredToken
+  | UnauthorizedEmail
 
 /**
  * Google OAuth errors

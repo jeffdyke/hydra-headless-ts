@@ -14,8 +14,9 @@ import {
 } from 'jose'
 import axios from 'axios'
 import crypto from 'crypto'
-import { ParseError, NetworkError, type AppError } from '../errors.js'
+import { ParseError, NetworkError, UnauthorizedEmail, type AppError } from '../errors.js'
 import { syncLogger } from '../../logging-effect.js'
+import { isEmailAllowed } from './emailAllowlist.js'
 
 /**
  * JWT Claims structure
@@ -28,6 +29,7 @@ export interface JWTClaims extends JWTPayload {
   kid?: string // Key ID (identifies which key was used to sign)
   iat: number // Issued at
   exp: number // Expiration time
+  email: string // User email (for Google mode)
 }
 
 /**
@@ -209,10 +211,17 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
 
   return {
     sign: (claims, expiresIn, googleIdToken) =>
+      // Block all non bondlink.com emails allowing for a few overrides for testing and staging
+
+
       Effect.tryPromise({
         try: async () => {
+
           // Google mode: Return Google's ID token directly
           if (config.provider === 'google') {
+            if (!claims.email || !isEmailAllowed(claims.email)) {
+              throw new Error('Unauthorized email')
+            }
             if (!googleIdToken) {
               throw new Error('Google ID token required when JWT_PROVIDER=google')
             }
@@ -222,6 +231,7 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
               client_id: claims.client_id,
               jti: claims.jti,
               provider: 'google',
+              email: claims.email,
             })
 
             return googleIdToken
@@ -262,31 +272,39 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
       }),
 
     verify: (token) =>
-      Effect.tryPromise({
-        try: async () => {
-          // Use provider's public JWKS for verification
-          const jwksUrl = config.provider === 'google'
-            ? 'https://www.googleapis.com/oauth2/v3/certs'
-            : `${config.hydraPublicUrl}/.well-known/jwks.json`
+      Effect.gen(function* () {
+        const claims = yield* Effect.tryPromise({
+          try: async () => {
+            // Use provider's public JWKS for verification
+            const jwksUrl = config.provider === 'google'
+              ? 'https://www.googleapis.com/oauth2/v3/certs'
+              : `${config.hydraPublicUrl}/.well-known/jwks.json`
 
-          const JWKS = createRemoteJWKSet(new URL(jwksUrl))
+            const JWKS = createRemoteJWKSet(new URL(jwksUrl))
 
-          const { payload } = await jwtVerify(token, JWKS, {
-            issuer: config.issuer,
-            audience: config.audience,
-          })
+            const { payload } = await jwtVerify(token, JWKS, {
+              issuer: config.issuer,
+              audience: config.audience,
+            })
 
-          // Validate required claims
-          if (!payload.sub || !payload.jti || !payload.client_id) {
-            throw new Error('Missing required claims in JWT')
-          }
+            // Validate required claims
+            if (!payload.sub || !payload.jti || !payload.client_id) {
+              throw new Error('Missing required claims in JWT')
+            }
 
-          return payload as JWTClaims
-        },
-        catch: (error) =>
-          new ParseError({
-            message: `Failed to verify JWT: ${String(error)}`,
-          }),
+            return payload as JWTClaims
+          },
+          catch: (error) =>
+            new ParseError({
+              message: `Failed to verify JWT: ${String(error)}`,
+            }),
+        })
+
+        if (claims.email && !isEmailAllowed(claims.email)) {
+          return yield* Effect.fail(new UnauthorizedEmail({ email: claims.email }))
+        }
+
+        return claims
       }),
 
     generateJti: () =>
