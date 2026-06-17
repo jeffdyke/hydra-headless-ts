@@ -60,7 +60,7 @@ services:
     networks:
       - hydra-net
   headless-ts:
-    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-hydra-headless-ts:latest
+    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-hydra-headless-ts
     env_file:
       - /etc/hydra-headless-ts/hydra.env
     ports:

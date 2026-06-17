@@ -2,7 +2,7 @@
 set -xe
 hydra_running=$(docker ps --filter "name=hydra-headless-ts-1" -q) # Running or restarting, it needs to be stopped
 BASE_IMAGE="668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-hydra-headless-ts"
-BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+BUILD_DATE=$(date -u +"%Y%m%dT%H%M%S")
 GIT_COMMIT=$(git rev-parse --short HEAD)
 BUILD_HASH="hydra-headless-ts_${BUILD_DATE}_${GIT_COMMIT}"
 if [ ! -z "$hydra_running" ]; then
