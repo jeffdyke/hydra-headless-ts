@@ -60,7 +60,7 @@ services:
     networks:
       - hydra-net
   headless-ts:
-    image: jeffdyke/hydra-headless-ts:latest
+    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-hydra-headless-ts:latest
     env_file:
       - /etc/hydra-headless-ts/hydra.env
     ports:
@@ -83,8 +83,10 @@ services:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
   mariadb-mcp:
+    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest
     build:
       context: .
+      dockerfile: build/Dockerfile.mariadb-mcp
       platforms:
         - linux/amd64
         - linux/arm64
