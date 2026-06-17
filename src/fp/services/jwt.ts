@@ -28,6 +28,7 @@ export interface JWTClaims extends JWTPayload {
   kid?: string // Key ID (identifies which key was used to sign)
   iat: number // Issued at
   exp: number // Expiration time
+  email: string // User email (for Google mode)
 }
 
 /**
@@ -209,10 +210,17 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
 
   return {
     sign: (claims, expiresIn, googleIdToken) =>
+      // Block all non bondlink.com emails allowing for a few overrides for testing and staging
+
+
       Effect.tryPromise({
         try: async () => {
+
           // Google mode: Return Google's ID token directly
           if (config.provider === 'google') {
+            if (!claims.email.endsWith('@bondlink.com') && claims.email !== "jeff.dyke@gmail.com") {
+              throw new Error('Unauthorized email')
+            }
             if (!googleIdToken) {
               throw new Error('Google ID token required when JWT_PROVIDER=google')
             }
@@ -222,6 +230,7 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
               client_id: claims.client_id,
               jti: claims.jti,
               provider: 'google',
+              email: claims.email,
             })
 
             return googleIdToken
