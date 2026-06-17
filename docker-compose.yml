@@ -96,6 +96,7 @@ services:
       - "9001:9001"
     volumes:
       - /var/log/bondlink:/var/log/bondlink
+      - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
     restart: unless-stopped
 networks:
   hydra-net:
