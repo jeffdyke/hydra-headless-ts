@@ -1,0 +1,13 @@
+# Email allowlist for OAuth access control
+# Loaded at startup from EMAIL_ALLOWLIST_PATH (default: allowed-emails.txt)
+#
+# Domains: all addresses at the domain are allowed (one per line, no @ prefix)
+# Full emails: specific addresses allowed (must contain @)
+#
+# Lines starting with # are comments. Blank lines are ignored.
+
+# Allowed domains
+bondlink.com
+
+# Allowed individual addresses
+jeff.dyke@gmail.com

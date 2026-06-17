@@ -71,7 +71,6 @@
     "serve-favicon": "^2.5.1",
     "tslib": "^2.8.1",
     "tslog": "^4.10.2",
-    "typescript": "^5.9.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -82,7 +81,7 @@
     "@rollup/plugin-node-resolve": "^16.0.2",
     "@rollup/plugin-typescript": "^12.1.4",
     "@types/express": "^5.0.3",
-    "@types/node": "^24.10.0",
+    "@types/node": "^24.13.2",
     "@types/serve-favicon": "^2.5.7",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.3",
@@ -95,7 +94,9 @@
     "prettier": "^3.6.2",
     "rollup": "^4.52.4",
     "rollup-plugin-copy2": "^0.4.0",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^3.2.4"
   }
 }

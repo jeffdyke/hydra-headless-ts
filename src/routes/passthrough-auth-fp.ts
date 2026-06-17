@@ -54,6 +54,11 @@ const mapErrorToOAuth2 = (error: AppError): { status: number; body: object } => 
         status: 400,
         body: createOAuth2Error('invalid_grant', 'Token expired'),
       }
+    case 'UnauthorizedEmail':
+      return {
+        status: 403,
+        body: createOAuth2Error('access_denied', 'Email not authorized'),
+      }
 
     // Redis errors
     case 'RedisKeyNotFound':

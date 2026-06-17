@@ -5,7 +5,7 @@ volumes:
 
 services:
   hydra-migrate:
-    image: oryd/hydra:v25.4.0
+    image: oryd/hydra:v25.4.0-arm64
     environment:
       - DSN=postgres://hydra:my-super-secret-password@postgres:5432/hydra?sslmode=disable
     command: migrate sql -e --yes
@@ -16,7 +16,7 @@ services:
       - hydra-net
 
   hydra:
-    image: oryd/hydra:v25.4.0
+    image: oryd/hydra:v25.4.0-arm64
     ports:
       - "4444:4444" # Public API
       - "4445:4445" # Admin API
@@ -40,7 +40,7 @@ services:
       - POSTGRES_PASSWORD=my-super-secret-password
       - POSTGRES_DB=hydra
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
       - ./docker/postgres/init-session-table.sql:/docker-entrypoint-initdb.d/01-init-session-table.sql:ro
     networks:
       - hydra-net
@@ -60,7 +60,7 @@ services:
     networks:
       - hydra-net
   headless-ts:
-    image: jeffdyke/hydra-headless-ts:latest
+    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-hydra-headless-ts
     env_file:
       - /etc/hydra-headless-ts/hydra.env
     ports:
@@ -68,6 +68,9 @@ services:
     build:
       context: .
       dockerfile: build/Dockerfile.headless-ts
+      platforms:
+        - linux/amd64
+        - linux/arm64
     environment:
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_ENV=development
@@ -79,7 +82,22 @@ services:
     volumes:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
-
+  mariadb-mcp:
+    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest
+    build:
+      context: .
+      dockerfile: build/Dockerfile.mariadb-mcp
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: mariadb-mcp
+    env_file: /etc/hydra-headless-ts/mariadb-mcp.env
+    ports:
+      - "9001:9001"
+    volumes:
+      - /var/log/bondlink:/var/log/bondlink
+      - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+    restart: unless-stopped
 networks:
   hydra-net:
     driver: bridge

@@ -3,9 +3,11 @@
  */
 import * as crypto from 'crypto'
 import { Effect } from 'effect'
+import { decodeJwt } from 'jose'
 import { PKCEStateSchema } from '../domain.js'
-import { type AppError, GoogleAuthError } from '../errors.js'
+import { type AppError, GoogleAuthError, UnauthorizedEmail } from '../errors.js'
 import { RedisService, createOAuthRedisOps } from './redis.js'
+import { isEmailAllowed } from './emailAllowlist.js'
 import type { AuthCodeData } from '../domain.js';
 
 /**
@@ -109,6 +111,26 @@ export const processCallback = (
           errorDescription: 'Google did not return an access token',
         })
       )
+    }
+
+    // Step 3.5: Validate email from Google ID token before storing anything
+    const idToken = googleTokens.tokens.id_token
+    if (!idToken) {
+      return yield* Effect.fail(
+        new GoogleAuthError({
+          error: 'missing_id_token',
+          errorDescription: 'Google did not return an ID token — ensure openid scope is requested',
+        })
+      )
+    }
+
+    const idPayload = decodeJwt(idToken)
+    const email = typeof idPayload['email'] === 'string' ? idPayload['email'] : undefined
+    if (!email || !isEmailAllowed(email)) {
+      yield* Effect.logWarn('Blocked unauthorized email at callback').pipe(
+        Effect.annotateLogs({ email: email ?? '<missing>' })
+      )
+      return yield* Effect.fail(new UnauthorizedEmail({ email: email ?? '<missing>' }))
     }
 
     // Step 4: Generate new auth_code for passthrough
