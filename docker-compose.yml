@@ -73,9 +73,12 @@ services:
         - linux/arm64
       ssh:
         - default=${SSH_AUTH_SOCK}
+      args:
+        - BRANCH_NAME=${BRANCH_NAME}
     environment:
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_ENV=development
+      - BRANCH_NAME=${BRANCH_NAME}
     depends_on:
       - hydra
     networks:
