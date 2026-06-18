@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -xe
-ECR_REPO="bondlink-hydra-headless-ts"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+source "${SCRIPT_DIR}/shared.sh"
+
 LAST_TAG=$(aws ecr describe-images \
     --repository-name $ECR_REPO \
     --query 'sort_by(imageDetails, &imagePushedAt)[-1].imageTags[0]' \
@@ -12,6 +14,6 @@ if [ "$LAST_TAG" == "None" ]; then
 fi
 
 echo "Latest ECR image tag: $LAST_TAG"
-sudo docker pull "668874212870.dkr.ecr.us-east-1.amazonaws.com/$ECR_REPO:$LAST_TAG"
-sudo docker tag "668874212870.dkr.ecr.us-east-1.amazonaws.com/$ECR_REPO:$LAST_TAG" "668874212870.dkr.ecr.us-east-1.amazonaws.com/$ECR_REPO:latest"
-sudo docker compose -f /src/hydra-headless-ts/docker-compose.yml up -d --force-recreate headless-ts
+sudo docker pull "${REPO_BASE}/$ECR_REPO:$LAST_TAG"
+sudo docker tag "${REPO_BASE}/$ECR_REPO:$LAST_TAG" "${REPO_BASE}/$ECR_REPO:latest"
+sudo docker compose -f "${COMPOSE_FILE}" up -d --force-recreate headless-ts
