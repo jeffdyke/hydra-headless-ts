@@ -18,6 +18,5 @@ BRANCH_NAME="${GIT_BRANCH}" docker compose -f "${COMPOSE_FILE}" build --no-deps 
 sudo docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --no-deps headless-ts
 
 docker tag "${BASE_IMAGE}":latest "${BASE_IMAGE}":"${BUILD_HASH}"
-echo "Login Result $(login)"
 docker push "${BASE_IMAGE}":"${BUILD_HASH}"
 echo "Build and push complete: ${BASE_IMAGE}":"${BUILD_HASH}"
