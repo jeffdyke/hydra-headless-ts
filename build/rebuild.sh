@@ -13,9 +13,9 @@ if [ ! -z "$hydra_running" ]; then
   sudo docker stop "${ECR_REPO}-1"
   sudo docker system prune -a -f
 fi
-BRANCH_NAME="${GIT_BRANCH}" docker compose -f "${COMPOSE_FILE}" build headless-ts
+BRANCH_NAME="${GIT_BRANCH}" docker compose -f "${COMPOSE_FILE}" build --no-deps headless-ts
 
-sudo docker compose -f "${COMPOSE_FILE}" up -d --force-recreate headless-ts
+sudo docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --no-deps headless-ts
 
 docker tag "${BASE_IMAGE}":latest "${BASE_IMAGE}":"${BUILD_HASH}"
 echo "Login Result $(login)"
