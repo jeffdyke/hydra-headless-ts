@@ -6,9 +6,12 @@ ARG BRANCH_NAME="RC"
 RUN mkdir -p /usr/src/app
 
 WORKDIR /usr/src/app
-RUN apk add --no-cache vim git bash postgresql-client
+RUN apk add --no-cache vim git bash postgresql-client openssh-client
 
-RUN git clone --branch ${BRANCH_NAME} --single-branch git@github.com:mblink/hydra-headless-ts.git /tmp/repo \
+RUN mkdir -p -m 0755 ~/.ssh \
+    && ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+RUN --mount=type=ssh git clone --branch ${BRANCH_NAME} --single-branch git@github.com:mblink/hydra-headless-ts.git /tmp/repo \
     && cp -rf /tmp/repo/* /usr/src/app \
     && npm install \
     && npm run build \

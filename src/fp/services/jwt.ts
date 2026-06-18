@@ -219,7 +219,7 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
 
           // Google mode: Return Google's ID token directly
           if (config.provider === 'google') {
-            if (!claims.email || !isEmailAllowed(claims.email)) {
+            if (typeof claims.email !== 'string' || !isEmailAllowed(claims.email)) {
               throw new Error('Unauthorized email')
             }
             if (!googleIdToken) {
