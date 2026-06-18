@@ -2,7 +2,7 @@ FROM node:23-alpine3.20 AS builder
 
 ARG ENV_FILE_PREFIX="staging"
 ENV ENV_SUBCOMMAND="${ENV_FILE_PREFIX}"
-ARG BRANCH_NAME="updates/email"
+ARG BRANCH_NAME="RC"
 RUN mkdir -p /usr/src/app
 
 WORKDIR /usr/src/app
