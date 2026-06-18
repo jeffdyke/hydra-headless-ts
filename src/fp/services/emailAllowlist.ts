@@ -18,13 +18,13 @@ const loadAllowlist = (filePath: string): EmailAllowlist => {
     const domains = new Set<string>()
     const emails = new Set<string>()
 
-    for (const line of lines) {
+    lines.forEach((line) => {
       if (line.includes('@')) {
         emails.add(line.toLowerCase())
       } else {
         domains.add(line.toLowerCase())
       }
-    }
+    })
 
     syncLogger.info('Email allowlist loaded', {
       filePath,

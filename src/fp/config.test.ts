@@ -100,8 +100,10 @@ describe('fp/config', () => {
   describe('appConfigEffect - production environment', () => {
     it('should load production config with strict security', async () => {
       process.env.APP_ENV = 'production'
+      process.env.BASE_URL = 'https://auth.domain.tld'
       process.env.PUBLIC_DOMAIN = 'auth.domain.tld'
       process.env.PRIVATE_HOST = '10.0.0.100'
+      process.env.HYDRA_PUBLIC_URL = 'https://auth.domain.tld'
       process.env.HYDRA_ADMIN_HOST = '10.0.0.100'
       process.env.HYDRA_ADMIN_PORT = '4445'
       process.env.REDIS_HOST = '10.0.0.101'
@@ -127,8 +129,10 @@ describe('fp/config', () => {
 
     it('should allow optional Google OAuth credentials in production', async () => {
       process.env.APP_ENV = 'production'
+      process.env.BASE_URL = 'https://auth.domain.tld'
       process.env.PUBLIC_DOMAIN = 'auth.domain.tld'
       process.env.PRIVATE_HOST = '10.0.0.100'
+      process.env.HYDRA_PUBLIC_URL = 'https://auth.domain.tld'
       process.env.HYDRA_ADMIN_HOST = '10.0.0.100'
       process.env.DSN = 'postgres://user:pass@host:5432/db'
       // No GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET
@@ -162,6 +166,7 @@ describe('fp/config', () => {
 
     it('should handle custom port from environment', async () => {
       process.env.APP_ENV = 'development'
+      process.env.BASE_URL = 'http://dev.domain.tld:4000'
       process.env.PUBLIC_DOMAIN = 'dev.domain.tld'
       process.env.PRIVATE_HOST = 'localhost'
       process.env.HYDRA_PUBLIC_URL = 'http://dev.domain.tld:4444'
@@ -224,8 +229,10 @@ describe('fp/config', () => {
   describe('DomainConfig', () => {
     it('should support separate public and private domains', async () => {
       process.env.APP_ENV = 'staging'
+      process.env.BASE_URL = 'https://auth.staging.domain.tld'
       process.env.PUBLIC_DOMAIN = 'auth.staging.domain.tld'
       process.env.PRIVATE_HOST = '10.1.1.230'
+      process.env.HYDRA_PUBLIC_URL = 'https://auth.staging.domain.tld'
       process.env.HYDRA_ADMIN_HOST = '10.1.1.230'
       process.env.DSN = 'postgres://user:pass@host:5432/db'
 

@@ -218,26 +218,42 @@ const redisConfig = (env: AppEnvironment, domain: DomainConfig): Config.Config<S
 }
 
 /**
+ * Parse a postgres DSN URL into its component parts for use as env-var defaults.
+ */
+const parseDsnUrl = (dsn: string): { host: string; port: number; user: string; password: string; database: string } => {
+  try {
+    const url = new URL(dsn)
+    return {
+      host: url.hostname || 'localhost',
+      port: url.port ? parseInt(url.port, 10) : 5432,
+      user: decodeURIComponent(url.username) || 'hydra',
+      password: decodeURIComponent(url.password) || 'my-super-secret-password',
+      database: url.pathname.slice(1) || 'hydra',
+    }
+  } catch {
+    return { host: 'localhost', port: 5432, user: 'hydra', password: 'my-super-secret-password', database: 'hydra' }
+  }
+}
+
+/**
  * Database configuration
  */
-const databaseConfig = (env: AppEnvironment, domain: DomainConfig): Config.Config<DatabaseConfig> => {
-  const dsn = Config.string('DSN').pipe(
-    Config.withDefault(
-      isLocalEnvironment(env)
-        ? `postgres://hydra:my-super-secret-password@${domain.private}:5432/hydra?sslmode=disable`
-        : `postgres://hydra:my-super-secret-password@${domain.private}:5432/hydra`
-    )
-  )
+const databaseConfig = (
+  env: AppEnvironment,
+  domain: DomainConfig,
+  parsed: ReturnType<typeof parseDsnUrl>
+): Config.Config<DatabaseConfig> => {
+  const dsnDefault = isLocalEnvironment(env)
+    ? `postgres://hydra:my-super-secret-password@${domain.private}:5432/hydra?sslmode=disable`
+    : `postgres://hydra:my-super-secret-password@${domain.private}:5432/hydra`
 
   return Config.all({
-    dsn,
-    host: Config.string('POSTGRES_HOST').pipe(Config.withDefault(domain.private)),
-    port: Config.integer('POSTGRES_PORT').pipe(Config.withDefault(5432)),
-    user: Config.string('POSTGRES_USER').pipe(Config.withDefault('hydra')),
-    password: Config.string('POSTGRES_PASSWORD').pipe(
-      Config.withDefault('my-super-secret-password')
-    ),
-    database: Config.string('POSTGRES_DB').pipe(Config.withDefault('hydra')),
+    dsn: Config.string('DSN').pipe(Config.withDefault(dsnDefault)),
+    host: Config.string('POSTGRES_HOST').pipe(Config.withDefault(parsed.host)),
+    port: Config.integer('POSTGRES_PORT').pipe(Config.withDefault(parsed.port)),
+    user: Config.string('POSTGRES_USER').pipe(Config.withDefault(parsed.user)),
+    password: Config.string('POSTGRES_PASSWORD').pipe(Config.withDefault(parsed.password)),
+    database: Config.string('POSTGRES_DB').pipe(Config.withDefault(parsed.database)),
   })
 }
 
@@ -290,8 +306,8 @@ const securityConfig = (env: AppEnvironment, https: boolean, baseUrl: string): C
     ),
     csrfTokenName: Config.succeed(isLocal ? 'dev_xsrf_token' : 'xsrf_token'),
     xsrfHeaderName: Config.succeed(isLocal ? 'dev_xsrf_token' : 'xsrf_token'),
-    sameSite: Config.succeed<SameSiteType>(isLocal ? 'lax' : 'none'),
-    httpOnly: Config.succeed(!https),
+    sameSite: Config.succeed<SameSiteType>('lax'),
+    httpOnly: Config.succeed(true),
     secure: Config.succeed(https),
     mockTlsTermination: Config.boolean('MOCK_TLS_TERMINATION').pipe(
       Config.withDefault(false)
@@ -331,7 +347,14 @@ export const appConfigEffect = Effect.gen(function* () {
 
   const hydra = yield* hydraConfig(env, domain)
   const redis = yield* redisConfig(env, domain)
-  const database = yield* databaseConfig(env, domain)
+  const rawDsn = yield* Config.string('DSN').pipe(
+    Config.withDefault(
+      isLocalEnvironment(env)
+        ? `postgres://hydra:my-super-secret-password@${domain.private}:5432/hydra?sslmode=disable`
+        : `postgres://hydra:my-super-secret-password@${domain.private}:5432/hydra`
+    )
+  )
+  const database = yield* databaseConfig(env, domain, parseDsnUrl(rawDsn))
   const google = yield* googleConfig(env, baseUrl)
   const security = yield* securityConfig(env, https, baseUrl)
 

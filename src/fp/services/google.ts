@@ -96,7 +96,7 @@ export const makeGoogleOAuthService = (
       if (axiosError.response?.data) {
         try {
           const errorData = axiosError.response.data as any
-          if (errorData.error) {
+          if (typeof errorData.error === 'string') {
             return new GoogleAuthError({
               error: errorData.error,
               errorDescription: errorData.error_description,
