@@ -1,8 +1,8 @@
-FROM node:23-alpine3.20
+FROM node:23-alpine3.20 AS builder
 
 ARG ENV_FILE_PREFIX="staging"
 ENV ENV_SUBCOMMAND="${ENV_FILE_PREFIX}"
-ARG BRANCH_NAME="RC"
+ARG BRANCH_NAME="updates/email"
 RUN mkdir -p /usr/src/app
 
 WORKDIR /usr/src/app
@@ -11,8 +11,12 @@ RUN apk add --no-cache vim git bash postgresql-client openssh-client
 RUN mkdir -p -m 0755 ~/.ssh \
     && ssh-keyscan github.com >> ~/.ssh/known_hosts
 
+FROM builder AS application_install
+
+
 RUN --mount=type=ssh git clone --branch ${BRANCH_NAME} --single-branch git@github.com:mblink/hydra-headless-ts.git /tmp/repo \
     && cp -rf /tmp/repo/* /usr/src/app \
+    && git -C /tmp/repo branch --show-current \
     && npm install \
     && npm run build \
     && rm -rf /tmp/repo
