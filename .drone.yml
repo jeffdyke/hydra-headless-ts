@@ -37,10 +37,10 @@ steps:
     volumes: &volumes
       - *docker-volume
     commands:
-      - docker pull 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-python-bookworm:latest
+      - docker pull 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
 
   - name: base-install
-    image: &build-image 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-python-bookworm:latest
+    image: &build-image 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
     pull: never
     commands:
       - apk add --no-cache postgresql-client
@@ -61,7 +61,7 @@ steps:
       - pull-images
 
   - name: build-and-push
-    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-python-bookworm:latest
+    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
     pull: never
     volumes:
       - *docker-volume
