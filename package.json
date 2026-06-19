@@ -96,7 +96,7 @@
     "rollup-plugin-copy2": "^0.4.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^6.0.3",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   }
 }
