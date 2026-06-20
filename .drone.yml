@@ -44,9 +44,8 @@ steps:
     pull: never
     commands:
       - pwd && ls -la
-      - apk add --no-cache postgresql-client
-      - npm install
-      - npm run build
+      - bash +x build/rebuild.sh --ci
+
     depends_on:
       - init-build
       - pull-images
