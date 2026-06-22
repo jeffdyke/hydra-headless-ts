@@ -15,6 +15,7 @@ if [ ! -z "$hydra_running" ]; then
   docker stop hydra-headless-ts-1
   docker system prune -a -f
 fi
+echo "Docker $(which docker) version: $(docker --version)"
 docker compose -f /src/hydra-headless-ts/docker-compose.yml --build --no-deps headless-ts
 
 if [ $IS_CI -eq 0 ]; then
