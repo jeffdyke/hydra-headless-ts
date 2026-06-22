@@ -12,13 +12,13 @@ BUILD_DATE=$(date -u +"%Y%m%dT%H%M%S")
 GIT_COMMIT=$(git rev-parse --short HEAD)
 BUILD_HASH="${BUILD_DATE}_hydra-headless-ts_${GIT_COMMIT}"
 if [ ! -z "$hydra_running" ]; then
-  sudo docker stop hydra-headless-ts-1
-  sudo docker system prune -a -f
+  docker stop hydra-headless-ts-1
+  docker system prune -a -f
 fi
-docker -f /src/hydra-headless-ts/docker-compose.yml --build --no-deps headless-ts
+docker compose -f /src/hydra-headless-ts/docker-compose.yml --build --no-deps headless-ts
 
 if [ $IS_CI -eq 0 ]; then
-  docker -f /src/hydra-headless-ts/docker-compose.yml up -d --force-recreate --no-deps headless-ts
+  docker compose -f /src/hydra-headless-ts/docker-compose.yml up -d --force-recreate --no-deps headless-ts
 fi
 
 docker tag $BASE_IMAGE:latest $BASE_IMAGE:$BUILD_HASH
