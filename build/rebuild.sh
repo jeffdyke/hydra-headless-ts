@@ -9,14 +9,14 @@ else
 fi
 BASE_IMAGE="668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts"
 BUILD_DATE=$(date -u +"%Y%m%dT%H%M%S")
-GIT_COMMIT=$(sudo -u bldeploy git rev-parse --short HEAD)
+GIT_COMMIT=$(git rev-parse --short HEAD)
 BUILD_HASH="${BUILD_DATE}_hydra-headless-ts_${GIT_COMMIT}"
 if [ ! -z "$hydra_running" ]; then
   docker stop hydra-headless-ts-1
   docker system prune -a -f
 fi
 echo "Docker $(which docker) version: $(docker --version)"
-docker compose -f /src/hydra-headless-ts/docker-compose.yml build --no-deps headless-ts
+docker compose -f /src/hydra-headless-ts/docker-compose.yml build headless-ts
 
 if [ $IS_CI -eq 0 ]; then
   docker compose -f /src/hydra-headless-ts/docker-compose.yml up -d --force-recreate --no-deps headless-ts

@@ -1,10 +1,14 @@
 FROM node:22-alpine3.20
 
-WORKDIR /src/hydra-headless-ts
+WORKDIR /src/app
 
 RUN apk add --no-cache vim git bash postgresql-client \
+  && mkdir -p /tmp/repo \
+  && git clone --depth 1 --branch main https://$GIT_TOKEN@github.com/mblink/hydra-headless-ts.git /tmp/repo \
+  && cp -rf /tmp/repo/* /src/app/ \
   && npm install -g \
-  && npm build
+  && npm run build \
+  && rm -rf /tmp/repo
 
 VOLUME [ "/var/log/hydra-headless-ts", "/etc/hydra-headless-ts" ]
 
