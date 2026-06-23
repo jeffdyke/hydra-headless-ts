@@ -4,12 +4,11 @@ WORKDIR /src/app
 ARG GIT_BRANCH=RC
 RUN apk add --no-cache vim git bash postgresql-client \
   && mkdir -p /tmp/repo \
-  && git clone --depth 1 --branch $GIT_BRANCH https://$GIT_TOKEN@github.com/mblink/hydra-headless-ts.git /tmp/repo \
-  && cp -rf /tmp/repo/* /src/app/ \
-  && npm install -g --include=dev \
-  && npm list --depth=0 \
-  && npm run build \
-  && rm -rf /tmp/repo
+  && git clone --depth 1 --branch $GIT_BRANCH https://$GIT_TOKEN@github.com/mblink/hydra-headless-ts.git .
+
+RUN ls -l package.json \
+  && npm install \
+  && npm run build
 
 VOLUME [ "/var/log/hydra-headless-ts", "/etc/hydra-headless-ts" ]
 
