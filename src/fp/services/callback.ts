@@ -127,7 +127,7 @@ export const processCallback = (
     const idPayload = decodeJwt(idToken)
     const email = typeof idPayload['email'] === 'string' ? idPayload['email'] : undefined
     if (!email || !isEmailAllowed(email)) {
-      yield* Effect.logWarn('Blocked unauthorized email at callback').pipe(
+      yield* Effect.logWarning('Blocked unauthorized email at callback').pipe(
         Effect.annotateLogs({ email: email ?? '<missing>' })
       )
       return yield* Effect.fail(new UnauthorizedEmail({ email: email ?? '<missing>' }))

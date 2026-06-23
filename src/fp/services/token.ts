@@ -170,7 +170,7 @@ export const processRefreshTokenGrant = (
       const idPayload = decodeJwt(googleTokenData.google_id_token)
       const email = typeof idPayload['email'] === 'string' ? idPayload['email'] : undefined
       if (!email || !isEmailAllowed(email)) {
-        yield* Effect.logWarn('Blocked unauthorized email at token refresh').pipe(
+        yield* Effect.logWarning('Blocked unauthorized email at token refresh').pipe(
           Effect.annotateLogs({ email: email ?? '<missing>', jti: jwtRefreshData.jti })
         )
         return yield* Effect.fail(new UnauthorizedEmail({ email: email ?? '<missing>' }))
