@@ -11,6 +11,7 @@ BASE_IMAGE="668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts
 BUILD_DATE=$(date -u +"%Y%m%dT%H%M%S")
 GIT_COMMIT=$(git rev-parse --short HEAD)
 BUILD_HASH="${BUILD_DATE}_hydra-headless-ts_${GIT_COMMIT}"
+
 if [ ! -z "$hydra_running" ]; then
   docker stop hydra-headless-ts-1
   docker system prune -a -f
