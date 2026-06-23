@@ -2,12 +2,12 @@ import { Effect, Either, Layer } from 'effect'
 import { describe, it, expect, vi, beforeEach, assert } from 'vitest'
 import { decodeJwt } from 'jose'
 import { isEmailAllowed } from './emailAllowlist.js'
-import { processRefreshTokenGrant } from './token.js'
+import { processRefreshTokenGrant, processAuthCodeGrant } from './token.js'
 import { RedisService } from './redis.js'
 import { GoogleOAuthService } from './google.js'
 import { JWTService } from './jwt.js'
 import { UnauthorizedEmail, ParseError } from '../errors.js'
-import type { JWTRefreshData, GoogleTokenData } from '../domain.js'
+import type { JWTRefreshData, GoogleTokenData, AuthCodeData, PKCEState } from '../domain.js'
 
 vi.mock('./emailAllowlist.js', () => ({ isEmailAllowed: vi.fn() }))
 vi.mock('jose', () => ({ decodeJwt: vi.fn() }))
@@ -102,6 +102,131 @@ const run = (redis: RedisService) => {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// processAuthCodeGrant email check fixtures + helpers
+// ---------------------------------------------------------------------------
+
+// PKCE: plain method so verifier === challenge (no hashing needed in test)
+const CODE_VERIFIER = 'test-verifier-abc123'
+
+const validPKCEState: PKCEState = {
+  code_challenge: CODE_VERIFIER,
+  code_challenge_method: 'plain',
+  scope: 'openid',
+  state: 'test-state',
+  redirect_uri: 'https://client.example.com/callback',
+  client_id: 'test-client',
+  timestamp: Date.now(),
+}
+
+const validAuthCodeData: AuthCodeData = {
+  google_tokens: {
+    tokens: {
+      access_token: 'ga-access-token',
+      refresh_token: 'ga-refresh-token',
+      id_token: 'google-id-token',
+      scope: 'openid',
+      expires_in: 3600,
+      token_type: 'Bearer',
+    },
+  },
+}
+
+const makeAuthCodeRedis = (authCodeData: AuthCodeData = validAuthCodeData): RedisService => {
+  const getJSON = vi.fn()
+    .mockReturnValueOnce(Effect.succeed(authCodeData))  // getAuthCode
+    .mockReturnValueOnce(Effect.succeed(validPKCEState)) // getAuthCodeState
+  return {
+    get: () => Effect.succeed(null),
+    getJSON,
+    set: () => Effect.succeed('OK' as const),
+    setJSON: () => Effect.succeed('OK' as const),
+    del: () => Effect.succeed(1),
+    exists: () => Effect.succeed(1),
+  } as unknown as RedisService
+}
+
+const runAuthCodeGrant = (redis: RedisService) => {
+  const layer = Layer.merge(
+    Layer.succeed(RedisService, redis),
+    Layer.succeed(JWTService, stubJWT)
+  )
+  return Effect.runPromise(
+    Effect.either(
+      Effect.provide(
+        processAuthCodeGrant({
+          grant_type: 'authorization_code',
+          code: 'test-auth-code',
+          code_verifier: CODE_VERIFIER,
+          redirect_uri: 'https://client.example.com/callback',
+          client_id: 'test-client',
+        }),
+        layer
+      )
+    )
+  )
+}
+
+describe('processAuthCodeGrant email choke point', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('rejects when the google_id_token contains a blocked email', async () => {
+    vi.mocked(isEmailAllowed).mockReturnValue(false)
+    vi.mocked(decodeJwt).mockReturnValue({ email: 'blocked@gmail.com' } as any)
+
+    const result = await runAuthCodeGrant(makeAuthCodeRedis())
+
+    expect(result._tag).toBe('Left')
+    assert(Either.isLeft(result))
+    expect(result.left).toBeInstanceOf(UnauthorizedEmail)
+    expect((result.left as UnauthorizedEmail).email).toBe('blocked@gmail.com')
+    expect(isEmailAllowed).toHaveBeenCalledWith('blocked@gmail.com')
+  })
+
+  it('rejects with <missing> when the id_token payload has no email field', async () => {
+    vi.mocked(decodeJwt).mockReturnValue({} as any)
+
+    const result = await runAuthCodeGrant(makeAuthCodeRedis())
+
+    expect(result._tag).toBe('Left')
+    assert(Either.isLeft(result))
+    expect(result.left).toBeInstanceOf(UnauthorizedEmail)
+    expect((result.left as UnauthorizedEmail).email).toBe('<missing>')
+    expect(isEmailAllowed).not.toHaveBeenCalled()
+  })
+
+  it('skips email check and proceeds when id_token is absent', async () => {
+    const dataWithoutIdToken: AuthCodeData = {
+      google_tokens: {
+        tokens: { ...validAuthCodeData.google_tokens.tokens, id_token: undefined },
+      },
+    }
+    const result = await runAuthCodeGrant(makeAuthCodeRedis(dataWithoutIdToken))
+
+    expect(result._tag).toBe('Right')
+    expect(decodeJwt).not.toHaveBeenCalled()
+    expect(isEmailAllowed).not.toHaveBeenCalled()
+  })
+
+  it('succeeds when email is in the allowlist', async () => {
+    vi.mocked(isEmailAllowed).mockReturnValue(true)
+    vi.mocked(decodeJwt).mockReturnValue({ email: 'user@bondlink.com' } as any)
+
+    const result = await runAuthCodeGrant(makeAuthCodeRedis())
+
+    expect(result._tag).toBe('Right')
+    assert(Either.isRight(result))
+    expect(result.right).toMatchObject({
+      access_token: 'stub-access-token',
+      token_type: 'Bearer',
+      scope: 'openid',
+    })
+    expect(isEmailAllowed).toHaveBeenCalledWith('user@bondlink.com')
+  })
+})
 
 describe('processRefreshTokenGrant email choke point', () => {
   beforeEach(() => {

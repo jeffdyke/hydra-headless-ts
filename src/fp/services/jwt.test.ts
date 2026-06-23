@@ -46,56 +46,21 @@ describe('JWTService email choke points', () => {
   // ---------------------------------------------------------------------------
 
   describe('sign (Google mode)', () => {
-    it('rejects when email is not in the allowlist', async () => {
-      vi.mocked(isEmailAllowed).mockReturnValue(false)
-
+    it('returns the Google ID token when one is provided', async () => {
       const service = makeJWTService(googleConfig)
       const result = await Effect.runPromise(
-        Effect.either(
-          service.sign({ ...baseClaims, email: 'blocked@gmail.com' }, 3600, 'google-id-token')
-        )
-      )
-
-      expect(result._tag).toBe('Left')
-      assert(Either.isLeft(result))
-      expect(result.left).toBeInstanceOf(ParseError)
-      expect(isEmailAllowed).toHaveBeenCalledWith('blocked@gmail.com')
-    })
-
-    it('rejects when the email claim is not a string', async () => {
-      // typeof undefined !== 'string' → blocked without calling isEmailAllowed
-      const service = makeJWTService(googleConfig)
-      const result = await Effect.runPromise(
-        Effect.either(
-          service.sign(baseClaims as any, 3600, 'google-id-token')
-        )
-      )
-
-      expect(result._tag).toBe('Left')
-      assert(Either.isLeft(result))
-      expect(result.left).toBeInstanceOf(ParseError)
-    })
-
-    it('returns the Google ID token when email is allowed', async () => {
-      vi.mocked(isEmailAllowed).mockReturnValue(true)
-
-      const service = makeJWTService(googleConfig)
-      const result = await Effect.runPromise(
-        service.sign({ ...baseClaims, email: 'user@bondlink.com' }, 3600, 'expected-google-id-token')
+        service.sign(baseClaims, 3600, 'expected-google-id-token')
       )
 
       expect(result).toBe('expected-google-id-token')
-      expect(isEmailAllowed).toHaveBeenCalledWith('user@bondlink.com')
+      // Email policy is enforced upstream in token.ts, not inside sign()
+      expect(isEmailAllowed).not.toHaveBeenCalled()
     })
 
-    it('rejects when email is allowed but googleIdToken is absent', async () => {
-      vi.mocked(isEmailAllowed).mockReturnValue(true)
-
+    it('rejects when googleIdToken is absent', async () => {
       const service = makeJWTService(googleConfig)
       const result = await Effect.runPromise(
-        Effect.either(
-          service.sign({ ...baseClaims, email: 'user@bondlink.com' }, 3600)
-        )
+        Effect.either(service.sign(baseClaims, 3600))
       )
 
       expect(result._tag).toBe('Left')

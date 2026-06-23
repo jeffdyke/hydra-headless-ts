@@ -62,6 +62,21 @@ export const processAuthCodeGrant = (
     // Step 4: Generate JTI for this access token
     const jti = yield* jwt.generateJti()
 
+    // Step 4.5: Re-validate email from Google ID token before issuing any token
+    // (defense-in-depth — callback.ts already checked, but this catches any edge case
+    // where an auth code was stored without a valid email check)
+    const idTokenForGrant = authData.google_tokens.tokens.id_token
+    if (idTokenForGrant) {
+      const idPayload = decodeJwt(idTokenForGrant)
+      const email = typeof idPayload['email'] === 'string' ? idPayload['email'] : undefined
+      if (!email || !isEmailAllowed(email)) {
+        yield* Effect.logWarning('Blocked unauthorized email at auth code grant').pipe(
+          Effect.annotateLogs({ email: email ?? '<missing>' })
+        )
+        return yield* Effect.fail(new UnauthorizedEmail({ email: email ?? '<missing>' }))
+      }
+    }
+
     // Step 5: Store Google's tokens in Redis (indexed by JTI)
     const tokenObj = authData.google_tokens.tokens
     const googleTokenData: GoogleTokenData = {
