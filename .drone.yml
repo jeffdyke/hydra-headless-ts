@@ -1,0 +1,90 @@
+workspace:
+  base: /src
+  path: hydra-headless-ts
+
+trigger:
+  branch:
+    - RC
+
+kind: pipeline
+name: default
+
+volumes:
+  - name: docker
+    host:
+      path: /var/run/docker.sock
+  - name: cache
+    host:
+      path: /var/lib/drone/cache
+
+
+steps:
+  - name: init-build
+    image: ruby:3-alpine
+    volumes:
+      - &docker-volume { "name": "docker", path: "/var/run/docker.sock" }
+      - &docker-cache { "name": "cache", path: "/cache" }
+    commands:
+      - |
+        echo "Drone agent: $DRONE_AGENT_NAME"
+        echo "Drone Build Number: $DRONE_BUILD_NUMBER"
+        echo $DRONE_BUILD_NUMBER > /cache/build.txt
+    environment: &ci
+      CI: true
+
+  - name: pull-images
+    image: jeffdyke/ecr-auth-v2:stable
+    volumes: &volumes
+      - *docker-volume
+    commands:
+      - docker pull 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
+
+  - name: base-install
+    image: &build-image 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
+    pull: never
+    commands:
+      - pwd && ls -la
+      - bash +x build/rebuild.sh --ci
+
+    depends_on:
+      - init-build
+      - pull-images
+
+  - name: run-tests
+    image: *build-image
+    pull: never
+    commands:
+      - npm run test:ci
+    depends_on:
+      - base-install
+      - init-build
+      - pull-images
+
+  - name: build-and-push
+    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
+    pull: never
+    volumes:
+      - *docker-volume
+    commands:
+      - ${PWD}/build/rebuild.sh --ci
+    depends_on:
+      - run-tests
+      - base-install
+      - init-build
+      - pull-images
+  - name: notify
+    image: drillster/drone-email:latest
+    pull: always
+    environment:
+      PLUGIN_HOST: prodsalt.bondlink.vpc
+      PLUGIN_PORT: '25'
+      PLUGIN_FROM: bldeploy@bondlink.com
+    commands:
+      - |
+        if [ -z "$DRONE_COMMIT_AUTHOR_EMAIL" ]; then
+          apk add --no-cache --update git
+          export DRONE_COMMIT_AUTHOR_EMAIL="$(git show -s --format='%aE' HEAD)"
+        fi
+      - /bin/drone-email
+    when:
+      status: [changed, failure]
