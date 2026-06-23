@@ -2,6 +2,11 @@
 set -xe
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "${SCRIPT_DIR}/shared.sh"
+if [ "$(uname -m)" = "arm64" ]; then
+  PLATFORM="linux/arm64"
+else
+  PLATFORM="linux/amd64"
+fi
 
 LAST_TAG=$(aws ecr describe-images \
     --repository-name $ECR_REPO \
@@ -14,6 +19,6 @@ if [ "$LAST_TAG" == "None" ]; then
 fi
 
 echo "Latest ECR image tag: $LAST_TAG"
-sudo docker pull "${REPO_BASE}/$ECR_REPO:$LAST_TAG"
+sudo docker pull "${REPO_BASE}/$ECR_REPO:$LAST_TAG --platform ${PLATFORM}"
 sudo docker tag "${REPO_BASE}/$ECR_REPO:$LAST_TAG" "${REPO_BASE}/$ECR_REPO:latest"
 sudo docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --no-deps headless-ts
