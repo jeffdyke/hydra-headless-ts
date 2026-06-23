@@ -74,12 +74,11 @@ services:
       ssh:
         - default=${SSH_AUTH_SOCK}
       args:
-        - BRANCH_NAME=${BRANCH_NAME}
+        - GIT_TOKEN=${GIT_TOKEN}
+        - GIT_BRANCH=${GIT_BRANCH}
     environment:
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_ENV=development
-      - GIT_TOKEN=${GIT_TOKEN}
-      - GIT_BRANCH=${GIT_BRANCH}
     depends_on:
       - hydra
     networks:
