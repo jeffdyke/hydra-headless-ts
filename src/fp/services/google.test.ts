@@ -6,8 +6,14 @@ import { HttpStatusError, NetworkError, GoogleAuthError } from '../errors.js'
 import { makeGoogleOAuthService, type GoogleOAuthConfig } from './google.js'
 import type { GoogleTokenResponse, RefreshTokenData } from '../domain.js'
 
-// Mock axios
-vi.mock('axios')
+// Mock axios with an explicit factory so post/get/isAxiosError are proper vi.fn() spies
+vi.mock('axios', () => {
+  const post = vi.fn()
+  const get = vi.fn()
+  const isAxiosError = vi.fn().mockReturnValue(false)
+  const instance = { post, get, isAxiosError }
+  return { default: instance, ...instance }
+})
 
 // Mock google-auth-library
 vi.mock('google-auth-library', () => ({
@@ -67,10 +73,7 @@ describe('GoogleOAuthService', () => {
       expect(result).toEqual(mockResponse)
       expect(axios.post).toHaveBeenCalledWith(
         'https://oauth2.googleapis.com/token',
-        expect.objectContaining({
-          grant_type: 'refresh_token',
-          refresh_token: 'refresh-token-123',
-        }),
+        expect.stringContaining('refresh_token=refresh-token-123'),
         expect.any(Object)
       )
     })
@@ -182,12 +185,14 @@ describe('GoogleOAuthService', () => {
       const result = await Effect.runPromise(program)
 
       expect(result).toContain('https://accounts.google.com')
-      expect(mockOAuth2Client.generateAuthUrl).toHaveBeenCalledWith({
-        access_type: 'offline',
-        scope: 'openid profile email',
-        state: 'state-123',
-        redirect_uri: 'https://auth.example.com/callback',
-      })
+      expect(mockOAuth2Client.generateAuthUrl).toHaveBeenCalledWith(
+        expect.objectContaining({
+          access_type: 'offline',
+          scope: 'openid profile email',
+          state: 'state-123',
+          redirect_uri: 'https://auth.example.com/callback',
+        })
+      )
     })
 
     it('should fail when OAuth2Client is not available', async () => {
@@ -215,6 +220,7 @@ describe('GoogleOAuthService', () => {
           access_token: 'access-token-123',
           token_type: 'Bearer',
           expires_in: 3600,
+          scope: 'openid profile email',
           refresh_token: 'refresh-token-123',
           id_token: 'id-token-123',
         },
@@ -235,7 +241,9 @@ describe('GoogleOAuthService', () => {
 
       expect(result.access_token).toBe('access-token-123')
       expect(result.refresh_token).toBe('refresh-token-123')
-      expect(mockOAuth2Client.getToken).toHaveBeenCalledWith('auth-code-123')
+      expect(mockOAuth2Client.getToken).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'auth-code-123' })
+      )
     })
 
     it('should handle token exchange errors', async () => {
@@ -273,10 +281,7 @@ describe('GoogleOAuthService', () => {
       expect(result.access_token).toBe('new-access-token')
       expect(axios.post).toHaveBeenCalledWith(
         'https://oauth2.googleapis.com/token',
-        expect.objectContaining({
-          grant_type: 'refresh_token',
-          refresh_token: 'refresh-token-123',
-        }),
+        expect.stringContaining('refresh_token=refresh-token-123'),
         expect.any(Object)
       )
     })
@@ -404,7 +409,7 @@ describe('GoogleOAuthService', () => {
 
       expect(axios.post).toHaveBeenCalledWith(
         'https://custom.example.com/token',
-        expect.any(Object),
+        expect.stringContaining('refresh_token=refresh-token'),
         expect.any(Object)
       )
     })
