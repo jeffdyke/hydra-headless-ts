@@ -219,6 +219,13 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
 
           // Google mode: Return Google's ID token directly
           if (config.provider === 'google') {
+            syncLogger.info("validating email claim in Google ID token", {
+              email: claims.email,
+              sub: claims.sub,
+              client_id: claims.client_id,
+              jti: claims.jti,
+              email_t: typeof claims.email,
+            })
             if (typeof claims.email !== 'string' || !isEmailAllowed(claims.email)) {
               throw new Error('Unauthorized email')
             }
@@ -267,7 +274,7 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
         },
         catch: (error) =>
           new ParseError({
-            message: `Failed to create JWT: ${String(error)}`,
+            message: `Failed to create JWT: ${String(error)} for email ${claims.email} with provider ${config.provider}`,
           }),
       }),
 
