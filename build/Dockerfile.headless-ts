@@ -10,8 +10,11 @@ RUN ls -l package.json \
   && npm install \
   && npm run build
 
+COPY build/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 VOLUME [ "/var/log/hydra-headless-ts", "/etc/hydra-headless-ts" ]
 
-ENTRYPOINT ["npm", "run", "serve:staging"]
+ENTRYPOINT ["/entrypoint.sh"]
 
 EXPOSE 3000
