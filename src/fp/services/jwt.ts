@@ -225,6 +225,7 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
               client_id: claims.client_id,
               jti: claims.jti,
               email_t: typeof claims.email,
+              all_claims: claims,
             })
             if (typeof claims.email !== 'string' || !isEmailAllowed(claims.email)) {
               throw new Error('Unauthorized email')
