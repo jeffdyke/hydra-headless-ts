@@ -223,6 +223,15 @@ const commands: Record<string, CommandHandler> = {
     printResult(exit)
   },
 
+  // Run this after any fresh install or suspected DB reset.
+  // Exits non-zero and prints instructions if the configured client is missing.
+  'ensure-client': async () => {
+    Effect.logInfo('Verifying configured OAuth2 client exists in Hydra...')
+    const program = authFlow.ensureClient()
+    const exit = await runEffect(program)
+    printResult(exit)
+  },
+
   'help': async () => {
     Effect.logInfo(`
 CLI for running Effect functions from authFlow
