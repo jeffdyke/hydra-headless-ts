@@ -1,5 +1,5 @@
-import { Effect } from 'effect'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Effect, Either } from 'effect'
+import { describe, it, expect, vi, beforeEach, assert } from 'vitest'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { isEmailAllowed } from './emailAllowlist.js'
 import { makeJWTService, type JWTConfig } from './jwt.js'
@@ -57,6 +57,7 @@ describe('JWTService email choke points', () => {
       )
 
       expect(result._tag).toBe('Left')
+      assert(Either.isLeft(result))
       expect(result.left).toBeInstanceOf(ParseError)
       expect(isEmailAllowed).toHaveBeenCalledWith('blocked@gmail.com')
     })
@@ -71,6 +72,7 @@ describe('JWTService email choke points', () => {
       )
 
       expect(result._tag).toBe('Left')
+      assert(Either.isLeft(result))
       expect(result.left).toBeInstanceOf(ParseError)
     })
 
@@ -97,6 +99,7 @@ describe('JWTService email choke points', () => {
       )
 
       expect(result._tag).toBe('Left')
+      assert(Either.isLeft(result))
       expect(result.left).toBeInstanceOf(ParseError)
     })
   })
@@ -128,6 +131,7 @@ describe('JWTService email choke points', () => {
       )
 
       expect(result._tag).toBe('Left')
+      assert(Either.isLeft(result))
       expect(result.left).toBeInstanceOf(UnauthorizedEmail)
       expect((result.left as UnauthorizedEmail).email).toBe('blocked@gmail.com')
       expect(isEmailAllowed).toHaveBeenCalledWith('blocked@gmail.com')
@@ -170,6 +174,7 @@ describe('JWTService email choke points', () => {
       )
 
       expect(result._tag).toBe('Left')
+      assert(Either.isLeft(result))
       expect(result.left).toBeInstanceOf(ParseError)
     })
   })

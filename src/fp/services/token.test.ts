@@ -1,5 +1,5 @@
-import { Effect, Layer } from 'effect'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Effect, Either, Layer } from 'effect'
+import { describe, it, expect, vi, beforeEach, assert } from 'vitest'
 import { decodeJwt } from 'jose'
 import { isEmailAllowed } from './emailAllowlist.js'
 import { processRefreshTokenGrant } from './token.js'
@@ -116,6 +116,7 @@ describe('processRefreshTokenGrant email choke point', () => {
     const result = await run(redis)
 
     expect(result._tag).toBe('Left')
+    assert(Either.isLeft(result))
     expect(result.left).toBeInstanceOf(UnauthorizedEmail)
     expect((result.left as UnauthorizedEmail).email).toBe('blocked@gmail.com')
     expect(isEmailAllowed).toHaveBeenCalledWith('blocked@gmail.com')
@@ -128,6 +129,7 @@ describe('processRefreshTokenGrant email choke point', () => {
     const result = await run(redis)
 
     expect(result._tag).toBe('Left')
+    assert(Either.isLeft(result))
     expect(result.left).toBeInstanceOf(UnauthorizedEmail)
     expect((result.left as UnauthorizedEmail).email).toBe('<missing>')
     expect(isEmailAllowed).not.toHaveBeenCalled()
@@ -144,6 +146,7 @@ describe('processRefreshTokenGrant email choke point', () => {
     const result = await run(redis)
 
     expect(result._tag).toBe('Right')
+    assert(Either.isRight(result))
     expect(result.right).toMatchObject({
       access_token: 'stub-access-token',
       token_type: 'Bearer',
@@ -161,6 +164,7 @@ describe('processRefreshTokenGrant email choke point', () => {
     const result = await run(redis)
 
     expect(result._tag).toBe('Right')
+    assert(Either.isRight(result))
     expect(result.right).toMatchObject({
       access_token: 'stub-access-token',
       token_type: 'Bearer',

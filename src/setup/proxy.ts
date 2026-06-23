@@ -3,6 +3,7 @@
  * Uses RedisService from fp/services to store PKCE state with proper error handling
  */
 import { type ClientRequest } from 'http'
+import type { Socket } from 'net'
 import { Effect } from 'effect'
 import express from 'express'
 import { createProxyMiddleware } from 'http-proxy-middleware'
@@ -32,7 +33,7 @@ const proxyOptions = {
   prependPath: false,
   logger: syncLogger,
   on: {
-    error: (err: Error, req: Request, res: Response) => {
+    error: (err: Error, req: Request, res: Response | Socket) => {
       const nodeErr = err as NodeJS.ErrnoException
       syncLogger.error('Proxy error forwarding request to Hydra', {
         message: err.message,
@@ -42,8 +43,8 @@ const proxyOptions = {
         originalUrl: req.originalUrl,
         target: appConfig.hydraInternalUrl,
       })
-      if (res.headersSent) return
-      res.status(502).json({ error: 'proxy_error', message: 'Upstream service unavailable' })
+      if (!('status' in res) || (res as Response).headersSent) return
+      ;(res as Response).status(502).json({ error: 'proxy_error', message: 'Upstream service unavailable' })
     },
     proxyReq: (proxyReq: ClientRequest, req: Request, res: Response) => {
       const parsed = new URL(`${req.protocol  }://${  req.get('host')  }${req.originalUrl}`)
