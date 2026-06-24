@@ -346,7 +346,17 @@ export const appConfigEffect = Effect.gen(function* () {
   const port = yield* Config.integer('PORT').pipe(Config.withDefault(3000))
 
   const hydra = yield* hydraConfig(env, domain)
+
+  // Debug: show what process.env has for REDIS_HOST before Effect resolves it
+  const rawRedisHost = process.env['REDIS_HOST']
+  const rawPrivateHost = process.env['PRIVATE_HOST']
+  console.log('[config:redis] REDIS_HOST env var:', rawRedisHost ?? '(not set)')
+  console.log('[config:redis] PRIVATE_HOST env var:', rawPrivateHost ?? '(not set)')
+  console.log('[config:redis] domain.private resolved to:', domain.private)
+  console.log('[config:redis] Expected fallback if REDIS_HOST unset: domain.private =', domain.private)
+
   const redis = yield* redisConfig(env, domain)
+  console.log('[config:redis] Final redis.host resolved to:', redis.host, '— source:', rawRedisHost ? 'REDIS_HOST env var' : 'domain.private fallback')
   const rawDsn = yield* Config.string('DSN').pipe(
     Config.withDefault(
       isLocalEnvironment(env)

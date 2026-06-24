@@ -71,8 +71,6 @@ services:
       platforms:
         - linux/amd64
         - linux/arm64
-      ssh:
-        - default=${SSH_AUTH_SOCK}
       args:
         - GIT_TOKEN=${GIT_TOKEN}
         - GIT_BRANCH=${GIT_BRANCH}
