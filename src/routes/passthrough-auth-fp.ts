@@ -4,6 +4,7 @@
  */
 import { Effect } from 'effect'
 import express from 'express'
+import { decodeJwt } from 'jose'
 import {
   TokenRequestSchema,
   AuthCodeGrantSchema,
@@ -220,18 +221,35 @@ export const createTokenHandler = (serviceLayer: Layer.Layer<RedisService | Goog
 
       res.status(status).json(body)
     } else {
+      // Decode the access token to log its claims (helps verify what Claude.ai receives)
+      let tokenClaims: Record<string, unknown> = {}
+      try {
+        tokenClaims = decodeJwt(result.right.access_token) as Record<string, unknown>
+      } catch {
+        // Non-JWT access token — leave claims empty
+      }
+
       // Log success with token details (redacted)
       await Effect.runPromise(
         Effect.logInfo('=== TOKEN ENDPOINT SUCCESS ===').pipe(
           Effect.annotateLogs({
+            grant_type: req.body?.grant_type,
+            client_id: req.body?.client_id,
             token_type: result.right.token_type,
             expires_in: result.right.expires_in,
             has_access_token: !!result.right.access_token,
             has_refresh_token: !!result.right.refresh_token,
             scope: result.right.scope,
             access_token_preview: `${result.right.access_token.substring(0, 50)}...`,
-            grant_type: req.body?.grant_type,
-            client_id: req.body?.client_id,
+            token_claims: {
+              iss: tokenClaims['iss'],
+              aud: tokenClaims['aud'],
+              sub: tokenClaims['sub'],
+              email: tokenClaims['email'],
+              exp: tokenClaims['exp'],
+              iat: tokenClaims['iat'],
+              hd: tokenClaims['hd'],
+            },
             timestamp: new Date().toISOString(),
           }),
           Effect.provide(serviceLayer)
