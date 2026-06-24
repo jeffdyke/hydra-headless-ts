@@ -14,8 +14,6 @@ RUN apt-get update && apt-get install -y \
 RUN git clone --branch $GIT_BRANCH https://github.com/jeffdyke/mariadb-mcp.git /src/mariadb-mcp
 WORKDIR /src/mariadb-mcp
 RUN uv sync
-COPY build/support_files/mariadb-mcp/.env .
-
 
 EXPOSE 9001
 VOLUME [ "/var/log/bondlink" ]
