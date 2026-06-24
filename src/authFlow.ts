@@ -13,7 +13,7 @@ export const newClient = (
   const newClientIn = {
     client_name: clientName,
     grant_types: ["authorization_code", "refresh_token"],
-    scope: "openid email profile offline offline_access profile",
+    scope: "openid email profile offline_access",
     response_types: ["code"],
     redirect_uris: [`${appConfig.baseUrl}/callback`, "https://claude.ai/api/mcp_callback_auth"],
     token_endpoint_auth_method: "none"
@@ -78,7 +78,7 @@ export const ensureClient = (): Effect.Effect<
             Effect.fail(
               `CLIENT NOT FOUND IN HYDRA — database was likely reset.\n` +
               `New client created. Update hydra.env:\n` +
-              `  DCR_MASTER_CLIENT_ID=${created.client_id ?? '(see output)'}\n` +
+              `  AUTH_FLOW_CLIENT_ID=${created.client_id ?? '(see output)'}\n` +
               `Then restart the service.`
             )
           )

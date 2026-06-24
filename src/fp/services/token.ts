@@ -78,12 +78,16 @@ export const processAuthCodeGrant = (
     }
 
     // Step 5: Store Google's tokens in Redis (indexed by JTI)
+    // Use the originally-requested scope from the PKCE state (e.g. "openid profile email offline_access")
+    // rather than Google's URL-format scope (e.g. "https://www.googleapis.com/auth/...").
+    // The client (Claude.ai) validates that the returned scope matches what it requested.
     const tokenObj = authData.google_tokens.tokens
+    const grantedScope = pkceState.scope
     const googleTokenData: GoogleTokenData = {
       google_access_token: tokenObj.access_token,
       google_refresh_token: tokenObj.refresh_token ?? '',
       google_id_token: tokenObj.id_token,
-      scope: tokenObj.scope,
+      scope: grantedScope,
       subject: authData.subject ?? 'user',
       client_id: pkceState.client_id,
       expires_at: Date.now() + (tokenObj.expires_in * 1000),
@@ -103,7 +107,7 @@ export const processAuthCodeGrant = (
     yield* redisOps.setJWTRefresh(ourRefreshToken, {
       jti,
       client_id: pkceState.client_id,
-      scope: tokenObj.scope,
+      scope: grantedScope,
       subject: googleTokenData.subject,
       created_at: Date.now(),
     })
@@ -128,7 +132,7 @@ export const processAuthCodeGrant = (
       token_type: 'Bearer',
       expires_in: tokenObj.expires_in,
       refresh_token: ourRefreshToken, // Our own refresh token
-      scope: tokenObj.scope,
+      scope: grantedScope,
     }
 
     yield* Effect.logInfo('Returning OAuth2 JWT token response').pipe(

@@ -61,7 +61,7 @@ authClient() {
     --response-type "code,id_token" \
     --format json \
     --token-endpoint-auth-method none \
-    --scope "openid,email,profile,offline,offline_access" \
+    --scope "openid,email,profile,offline_access" \
     --redirect-uri "${CALLBACK_HOST}/callback,https://claude.ai/api/mcp/auth_callback,http://localhost:6274/oauth/callback,http://localhost:6274/oauth/callback/debug,http://127.0.0.1:6274/oauth/callback" \
     --format json
   )

@@ -358,7 +358,7 @@ export const appConfigEffect = Effect.gen(function* () {
   const google = yield* googleConfig(env, baseUrl)
   const security = yield* securityConfig(env, https, baseUrl)
 
-  const dcrMasterClientId = yield* Config.string('DCR_MASTER_CLIENT_ID').pipe(
+  const dcrMasterClientId = yield* Config.string('AUTH_FLOW_CLIENT_ID').pipe(
     Config.withDefault('')
   )
 
