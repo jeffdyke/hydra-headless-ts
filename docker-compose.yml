@@ -101,6 +101,37 @@ services:
       - /var/log/bondlink:/var/log/bondlink
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
     restart: unless-stopped
+  # Multi-source database MCP, served at /db-compare. Config and credential are
+  # written by Salt (salt/dbhub/init.sls) into /etc/hydra-headless-ts; DBHub reads
+  # the TOML once at startup and resolves ${DBHUB_DB_PASSWORD} from env_file at
+  # that moment, so a config change needs a recreate -- see rebuild-dbhub.sh.
+  #
+  # Upstream image rather than an ECR mirror: DBHub is not a fork we maintain.
+  # Pinned rather than :latest -- v1.0.0 is recent (2026-07-29), so re-check
+  # before bumping.
+  #
+  # DBHub does not authenticate HTTP clients. Publishing 9002 makes it reachable
+  # on the host, so the nginx /db-compare location must have auth_request enabled
+  # before this is exposed.
+  dbhub:
+    image: bytebase/dbhub:1.0.0
+    container_name: dbhub
+    command:
+      - --transport
+      - http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "9002"
+      - --config
+      - /etc/hydra-headless-ts/dbhub.toml
+    env_file: /etc/hydra-headless-ts/dbhub.env
+    ports:
+      - "9002:9002"
+    volumes:
+      - /var/log/bondlink:/var/log/bondlink
+      - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+    restart: unless-stopped
 networks:
   hydra-net:
     driver: bridge

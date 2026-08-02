@@ -43,6 +43,11 @@ steps:
     image: &build-image 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
     pull: never
     commands:
+
+  - name: build-image
+    image: *build-image
+    pull: never
+    commands:
       - pwd && ls -la
       - bash +x build/rebuild.sh --ci
 
