@@ -85,6 +85,7 @@ steps:
       - { "name": "bldeploy-pat", path: "/var/bondlink/tmp/.github" }
     environment: *ci
     commands:
+      - apk add docker-cli-compose
       - bash build/rebuild.sh --ci
     depends_on:
       - run-tests
