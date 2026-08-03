@@ -72,8 +72,12 @@ services:
         - linux/amd64
         - linux/arm64
       args:
-        - GIT_TOKEN=${GIT_TOKEN}
         - GIT_BRANCH=${GIT_BRANCH}
+      # Replaces the old GIT_TOKEN build-arg: a build-arg is recorded verbatim
+      # in `docker history`, so the token travelled with the image. build/
+      # rebuild.sh writes the askpass script and exports GIT_ASKPASS_FILE.
+      secrets:
+        - github_askpass
     environment:
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_ENV=development
@@ -135,3 +139,12 @@ services:
 networks:
   hydra-net:
     driver: bridge
+
+# Build-time only, consumed by build/Dockerfile.headless-ts's `--mount=type=secret`.
+# build/rebuild.sh generates the script from $GIT_TOKEN and exports the path.
+# Defaults to /dev/null so `compose up`/`compose config` still resolve for the
+# services that never build headless-ts; a build that reaches the clone without
+# a real script fails with a plain git auth error rather than something cryptic.
+secrets:
+  github_askpass:
+    file: ${GIT_ASKPASS_FILE:-/dev/null}
