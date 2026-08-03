@@ -21,4 +21,4 @@ fi
 echo "Latest ECR image tag: $LAST_TAG"
 sudo docker pull "${REPO_BASE}/$ECR_REPO:$LAST_TAG" --platform ${PLATFORM}
 sudo docker tag "${REPO_BASE}/$ECR_REPO:$LAST_TAG" "${REPO_BASE}/$ECR_REPO:latest"
-sudo docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --no-deps headless-ts
+sudo docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
