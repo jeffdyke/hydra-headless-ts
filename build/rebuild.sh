@@ -18,9 +18,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "${SCRIPT_DIR}/shared.sh"
 
 IS_CI=0
-if [ "$1" = "--ci" ]; then
+# Any non-empty, non-zero SKIP_GIT_CHECKS counts as force, so both
+# SKIP_GIT_CHECKS=1 and SKIP_GIT_CHECKS=true behave the way they read.
+FORCE=0
+case "${SKIP_GIT_CHECKS:-0}" in 0 | "") ;; *) FORCE=1 ;; esac
+# A loop rather than the old positional `[ "$1" = "--ci" ]`, so --ci and --force
+# compose in either order.
+for arg in "$@"; do
+  case "$arg" in
+    --ci) IS_CI=1 ;;
+    --force) FORCE=1 ;;
+    *)
+      echo "error: unknown argument '$arg' (expected --ci and/or --force)" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ $IS_CI -eq 1 ]; then
   hydra_running=
-  IS_CI=1
 else
   hydra_running=$(docker ps --filter "name=hydra-headless-ts-1" -q) # Running or restarting, it needs to be stopped
 fi
@@ -34,6 +50,89 @@ PUSH_IMAGE="${REPO_BASE}/${ECR_REPO}"
 BUILD_DATE=$(date -u +"%Y%m%dT%H%M%S")
 GIT_COMMIT=$(git rev-parse --short HEAD)
 BUILD_HASH="${BUILD_DATE}_hydra-headless-ts_${GIT_COMMIT}"
+
+# Which branch the image build clones. An explicit GIT_BRANCH always wins, and
+# in CI it is DRONE_BRANCH, which by construction matches the checked-out tree.
+#
+# Locally there is no DRONE_BRANCH, and defaulting straight to RC made the tag
+# lie: BUILD_HASH embeds GIT_COMMIT from *your* HEAD, so a run from a feature
+# branch published RC's code under the feature branch's short SHA. Default to
+# the checked-out branch instead, so ${BUILD_HASH} describes what is inside the
+# image. Detached HEAD has no branch name to clone (`--abbrev-ref` just says
+# "HEAD"), so that still falls back to RC.
+current_branch=
+if [ -z "${GIT_BRANCH:-}" ] && [ -z "${DRONE_BRANCH:-}" ] && [ $IS_CI -eq 0 ]; then
+  # `|| true` and the explicit if: under `set -e` a non-zero last command in an
+  # if-body aborts the script, and both of these fail routinely (not a git repo,
+  # branch is not detached).
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+  if [ "$current_branch" = "HEAD" ]; then
+    current_branch=
+  fi
+fi
+export GIT_BRANCH="${GIT_BRANCH:-${DRONE_BRANCH:-${current_branch:-RC}}}"
+echo "Building from branch: ${GIT_BRANCH} (${GIT_COMMIT})"
+
+# Refuse to publish an image whose contents do not match the tag it gets.
+#
+# build/Dockerfile.headless-ts clones $GIT_BRANCH from GitHub rather than
+# copying this working tree, so the local checkout influences the *tag* but
+# almost none of the *contents*. Three ways that diverges:
+#
+#   - Unpushed commits: the clone gets older code than the HEAD whose SHA is
+#     baked into BUILD_HASH, so the published tag names a commit the image does
+#     not contain.
+#   - Uncommitted app source: never reaches the image at all. A green build can
+#     silently omit the change you just made.
+#   - Uncommitted build/entrypoint.sh: the opposite -- that one file *is* COPYed
+#     from the local context, so the image matches no commit anywhere.
+#
+# Comparing origin's tip against GIT_COMMIT is the check that matters; it also
+# catches a branch that was never pushed, which would otherwise fail the clone
+# a minute into the build. Untracked files only warn: they are usually editor
+# scratch, and blocking on them just trains everyone to reach for --force.
+check_git_state() {
+  local remote_sha local_sha untracked
+  local_sha=$(git rev-parse HEAD)
+  # GIT_TERMINAL_PROMPT=0 so a missing credential fails here instead of hanging
+  # on a prompt nobody is watching.
+  remote_sha=$(GIT_TERMINAL_PROMPT=0 git ls-remote origin "refs/heads/${GIT_BRANCH}" 2>/dev/null | cut -f1)
+
+  if [ -z "$remote_sha" ]; then
+    echo "error: branch '${GIT_BRANCH}' is not on origin (or origin is unreachable)." >&2
+    echo "       The image build clones it from GitHub, so this would fail partway" >&2
+    echo "       through the build. Push the branch, or re-run with --force." >&2
+    return 1
+  fi
+  if [ "$remote_sha" != "$local_sha" ]; then
+    echo "error: origin/${GIT_BRANCH} is at ${remote_sha:0:7}, but HEAD is ${local_sha:0:7}." >&2
+    echo "       The image would be built from ${remote_sha:0:7} and published as" >&2
+    echo "       ${BUILD_HASH}, naming a commit it does not contain." >&2
+    echo "       Push your commits, or re-run with --force." >&2
+    return 1
+  fi
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "error: uncommitted changes to tracked files:" >&2
+    git --no-pager diff --stat HEAD >&2
+    echo "       These are not on origin/${GIT_BRANCH}, so they will not be in the" >&2
+    echo "       image. Commit and push, or re-run with --force." >&2
+    return 1
+  fi
+
+  untracked=$(git ls-files --others --exclude-standard)
+  if [ -n "$untracked" ]; then
+    echo "warning: untracked files present; they will not be in the image:" >&2
+    echo "$untracked" | sed 's/^/         /' >&2
+  fi
+}
+
+# Local only: a CI agent builds exactly what it checked out, so these checks are
+# noise there (and `git ls-remote` is a needless round trip).
+if [ $IS_CI -eq 0 ] && [ $FORCE -eq 0 ]; then
+  check_git_state || exit 1
+elif [ $FORCE -eq 1 ] && [ $IS_CI -eq 0 ]; then
+  echo "warning: --force/SKIP_GIT_CHECKS set; skipping git state checks." >&2
+fi
 
 # The image build clones this private repo, so it needs a PAT. Locally that's
 # GIT_TOKEN in your environment; on a Drone agent it's the bldeploy PAT file the
@@ -66,7 +165,6 @@ esac
 EOF
 chmod 700 "$GIT_ASKPASS_FILE"
 export GIT_ASKPASS_FILE
-export GIT_BRANCH="${GIT_BRANCH:-${DRONE_BRANCH:-RC}}"
 set -x
 if [ -n "$hydra_running" ]; then
   docker stop hydra-headless-ts-1
@@ -84,10 +182,14 @@ if [ $IS_CI -eq 0 ]; then
   docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --no-deps headless-ts
 fi
 
-# Each Drone step is its own container, so an ECR login done in an earlier step
-# does not carry over -- authenticate here or the push fails. shared.sh has
-# always defined login(); nothing called it.
+# Authenticate to ECR, unless a credential helper already handles it -- see the
+# long note on login() in shared.sh. shared.sh has always defined login();
+# nothing called it.
 login
+# docker-compose.yml's build block declares `platforms:`, so :latest in the
+# local store is a multi-platform index. `docker tag` carries the whole index
+# over, and `docker push` without --platform uploads every manifest in it, so
+# amd64 and arm64 both land under ${BUILD_HASH} from one run on either arch.
 docker tag "${PUSH_IMAGE}":latest "${PUSH_IMAGE}":"${BUILD_HASH}"
 docker push "${PUSH_IMAGE}":"${BUILD_HASH}"
 echo "Build and push complete: ${PUSH_IMAGE}:${BUILD_HASH}"
