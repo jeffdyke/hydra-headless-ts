@@ -67,7 +67,7 @@ EOF
 chmod 700 "$GIT_ASKPASS_FILE"
 export GIT_ASKPASS_FILE
 export GIT_BRANCH="${GIT_BRANCH:-${DRONE_BRANCH:-RC}}"
-
+set -x
 if [ -n "$hydra_running" ]; then
   docker stop hydra-headless-ts-1
   docker system prune -a -f
