@@ -7,8 +7,12 @@
 # The `id` becomes the tool-name suffix an MCP client sees -- execute_sql_localdb,
 # search_objects_localdb -- so a tool call says which host it hit.
 #
-# DBHub reads this file ONCE at startup, so a change needs a recreate, not a
-# restart:  docker compose up -d --force-recreate dbhub
+# DBHub v1.0.0 watches this file and hot-reloads it, so edits here take effect
+# with no restart. The password is the exception: ${DBHUB_DB_PASSWORD} comes from
+# the process environment, and env_file is read only when the container is
+# created -- so after changing dbhub.env you need
+#   docker compose up -d --force-recreate dbhub
+# and a plain `restart` will silently keep the old value.
 
 [[sources]]
 id = "localdb"
