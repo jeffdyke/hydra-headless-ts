@@ -188,6 +188,8 @@ services:
     container_name: hydra-nginx
     ports:
       - "8888:8888"
+    profiles:
+      - dev
     volumes:
       # conf.d is mounted as a DIRECTORY on purpose: it shadows the stock image's
       # conf.d/default.conf, which would otherwise also bind a server on :80.
