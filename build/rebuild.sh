@@ -168,7 +168,20 @@ export GIT_ASKPASS_FILE
 set -x
 if [ -n "$hydra_running" ]; then
   docker stop hydra-headless-ts-1
-  docker system prune -a -f
+  # No -a. `prune -a` removes every image not used by a RUNNING container, which
+  # took out the binfmt/QEMU emulator images along with everything else -- and
+  # this script had just stopped the one container keeping some of them alive.
+  # The next multi-arch build then died on the amd64 stage with
+  #   exec /bin/sh: exec format error
+  # which reads like a broken Dockerfile rather than missing emulation, and
+  # `docker buildx ls` keeps advertising linux/amd64 throughout because it lists
+  # configured platforms, not executable ones. Recovering needs
+  #   docker run --privileged --rm tonistiigi/binfmt --install amd64
+  #
+  # Plain prune drops dangling (untagged) layers only, which is all this was
+  # ever for -- reclaiming space from the previous build of this image. It also
+  # keeps the base images, so rebuilds stop re-pulling node:22-alpine every time.
+  docker system prune -f
 fi
 
 echo "Docker $(which docker) version: $(docker --version)"
