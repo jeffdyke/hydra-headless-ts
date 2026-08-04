@@ -60,7 +60,9 @@ Two steps stay manual: filling the Google credentials in
 as an authorized redirect URI on that Google client. `dev-bootstrap-env.sh`
 prints both when it finishes.
 
-Verify the whole path with `scripts/validate-mcp-path.sh --local`.
+Verify the whole path with `scripts/validate-mcp-path.sh --local`. See
+[LOCAL_TESTING.md](LOCAL_TESTING.md) for what each stage proves, how to isolate a
+single leg, and how to read a failure.
 
 ### Nginx Configuration
 
