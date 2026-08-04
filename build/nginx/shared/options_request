@@ -1,0 +1,12 @@
+# Copy of /src/salt/salt/nginx-frontend/etc/nginx/options_request, which salt
+# installs to /etc/nginx/options_request on staging and prod. See cors_headers
+# for the provenance note.
+
+if ($request_method = 'OPTIONS') {
+  # This is a relative path from the directory where `nginx.conf` lives
+  # It needs to be relative so it can work in dev as well as staging/prod
+  include cors_headers;
+  add_header 'Content-Type' 'text/plain; charset=utf-8';
+  add_header 'Content-Length' 0;
+  return 204;
+}

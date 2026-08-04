@@ -45,10 +45,35 @@ Simply change into the root of the repository:
 
 ## Installing Docker Environment
 
-- TODO
+The stack will not start until the config the services mount exists — compose
+treats a missing `env_file` as fatal for the whole `up`, not just one service.
+
+```bash
+scripts/dev-bootstrap-env.sh        # copies samples into /etc/hydra-headless-ts
+                                    # (never overwrites; prints a diff instead)
+docker compose up -d
+scripts/dev-register-client.sh      # one-time, and after any `down -v`
+```
+
+Two steps stay manual: filling the Google credentials in
+`/etc/hydra-headless-ts/local.env`, and adding `http://localhost:8888/callback`
+as an authorized redirect URI on that Google client. `dev-bootstrap-env.sh`
+prints both when it finishes.
+
+Verify the whole path with `scripts/validate-mcp-path.sh --local`.
 
 ### Nginx Configuration
 
-[Virtual Host configuration](build/support_files/nginx/hydra.conf), for Nginx.
+nginx runs **in compose** for local development, serving <http://localhost:8888>
+— the same entry point and port staging uses, including the `auth_request`
+bearer gate on `/db-compare`. Config lives in
+[`build/nginx/`](build/nginx/README.md); the dev virtual host is
+[`build/nginx/dev/conf.d/hydra.conf`](build/nginx/dev/conf.d/hydra.conf).
 
-- A single variable `private_ip` is required to speak to the upstream docker containers
+Staging and prod are unchanged: there nginx runs on the **host** and Salt owns
+the config (`salt/hydra-headless-ts` → `/etc/nginx/conf.d/hydra.conf`). Since
+that makes two copies of the same routing rules,
+`build/nginx/reference/hydra.conf.staging.example` keeps a verbatim staging
+render as a baseline and `npm run check:nginx-drift` compares the two
+structurally. Run it after editing either side, and refresh the reference when
+the Salt template changes.
