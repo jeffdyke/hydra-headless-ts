@@ -21,7 +21,7 @@ FORCE=0
 
 # sample -> destination filename
 MAP=(
-  "build/support_files/mariadb-mcp/.env:mariadb-mcp.env"
+  "build/support_files/mariadb-mcp/mariadb-mcp.env:mariadb-mcp.env"
   "build/support_files/dbhub/dbhub.env:dbhub.env"
   "build/support_files/dbhub/dbhub.toml:dbhub.toml"
   "build/support_files/hydra/hydra.local.yml:hydra.yml"
