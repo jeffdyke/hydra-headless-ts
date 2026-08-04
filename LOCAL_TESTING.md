@@ -52,13 +52,17 @@ not just the one service — so without `mariadb-mcp.env`, `dbhub.env` and
 overwrites an existing file; it prints a diff instead, because the files it
 targets hold real credentials.
 
-Two steps stay manual, and the bootstrap prints both:
+Three steps stay manual, and the bootstrap prints all of them:
 
 1. Fill `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `JWT_AUDIENCE` in
-   `/etc/hydra-headless-ts/local.env`.
+   `/etc/hydra-headless-ts/local.env`. `JWT_AUDIENCE` must equal
+   `GOOGLE_CLIENT_ID` or every token is rejected on `aud`.
 2. Add `http://localhost:8888/callback` as an authorized redirect URI (and
    `http://localhost:8888` as a JavaScript origin) on that Google client. Exact
    match — the port matters. Nothing in this repo can do it for you.
+3. Set the database password in **both** `mariadb-mcp.env` (`DB_PASSWORD`) and
+   `dbhub.env` (`DBHUB_DB_PASSWORD`) — same user, so the same value — and point
+   `DB_HOST` / `dbhub.toml`'s `host =` at a database you can reach.
 
 ## What each stage actually proves
 
@@ -84,8 +88,10 @@ are otherwise invisible:
 
 ## Known state on a fresh workstation
 
-Running `--local` today gives roughly `passed 5, failed 6, skipped 1`. That is
-expected, and the failures are three specific environment gaps, not broken code:
+A freshly bootstrapped workstation fails several checks before you do the manual
+steps below, and none of those failures mean broken code. Once the three gaps are
+closed, `--local` reports **12 passed, 0 failed, 1 skipped** — the remaining skip
+is the authorized `/authz` decision, which needs a token.
 
 **1. The local config is a staging clone.** `/etc/hydra-headless-ts/hydra.env` is
 a symlink to `local.env`, which points `BASE_URL`, `HYDRA_PUBLIC_URL` and
@@ -109,13 +115,26 @@ Google credentials for it *and* forces both domains to `LOCAL_DOMAIN`, which
 points the internal proxy at `localhost:4444` inside the container. Use
 `development`.
 
-**2. There is no local MariaDB.** Stage 5 fails with a pool timeout. That's the
-designed diagnostic: `dbhub.toml` sets `lazy = true` so DBHub starts and answers
-`tools/list` without a database, letting stages 1–4 pass and isolating the
-failure to the database leg alone.
+**2. The database credentials are placeholders, in two files that must agree.**
+Both `mariadb-mcp.env` (`DB_PASSWORD`) and `dbhub.env` (`DBHUB_DB_PASSWORD`)
+connect as the same read-only user, so they need the same value. The two services
+fail very differently when they're wrong, which is worth knowing before you go
+hunting:
 
-`mariadb-mcp` has no such option — it builds its pool **eagerly** and exits(1),
-so it will crash-loop until it can reach a MariaDB. Expected; see T9 below.
+- **mariadb-mcp** builds its pool **eagerly** and `exit(1)`s if it cannot
+  connect — it crash-loops and never serves. A wrong `DB_HOST` looks like
+  `Can't connect to MySQL server ... Name or service not known`.
+- **DBHub** is `lazy = true` in `dbhub.toml`, so it starts and answers
+  `tools/list` regardless. A wrong credential surfaces only at stage 5, as
+  `pool timeout: failed to retrieve a connection from pool` — which reads like an
+  unreachable database but usually is not.
+
+That laziness is deliberate: it lets stages 1–4 pass without a database and
+isolates a failure to the database leg alone. The cost is that DBHub's
+misconfiguration is invisible until you run a query, so check both files together.
+
+If you have no database at all, stage 5 is the only stage that cannot pass;
+everything through stage 4, including the whole gate, still runs.
 
 **3. `redis` may collide on 6379** with another compose project (e.g.
 `salt-dev-redis`). Bring services up by name if so.
@@ -128,12 +147,12 @@ so it will crash-loop until it can reach a MariaDB. Expected; see T9 below.
 | every request resets, `broken header` | `proxy_protocol` left on `listen`; there is no HAProxy locally |
 | `/db-compare` → 500 | the `/_authz` subrequest failed, usually `headless-ts` not serving |
 | `/db-compare` → 200 without a token | **the gate is open** — treat as serious |
-| `/db-tools` → 502 | `mariadb-mcp` is down; contained by design, see T9 |
+| `/db-tools` → 502 | `mariadb-mcp` is down — it exits when it cannot reach the database. Contained by T9 so nginx survives |
 | `/authz` → 502 | `headless-ts` not serving |
 | challenge says `https://localhost` or drops `:8888` | T8 regression |
 | a redirect loses the port | T4 regression — `$host` strips it, `$http_host` doesn't |
 | `open() "/etc/nginx/cors_headers" failed` | a bind-mount path was wrong, so Docker created a **directory** there |
-| stage 5 pool timeout | DBHub reached, database not — check `dbhub.toml` host/credentials |
+| stage 5 pool timeout | DBHub reached, database not. Usually `DBHUB_DB_PASSWORD` still `change-me`, or disagreeing with `mariadb-mcp.env`'s `DB_PASSWORD` |
 
 ## Isolating a leg
 

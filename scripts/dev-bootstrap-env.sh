@@ -83,7 +83,17 @@ cat <<EOF
 
 Still manual after this:
   1. Fill GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / JWT_AUDIENCE in ${DEST}/local.env
+     (JWT_AUDIENCE must equal GOOGLE_CLIENT_ID, or every token is rejected on aud)
   2. Add http://localhost:8888/callback as an Authorized redirect URI, and
      http://localhost:8888 as a JavaScript origin, on that Google client
-  3. scripts/dev-register-client.sh   (needs hydra running; sets AUTH_FLOW_CLIENT_ID)
+  3. Database credentials, in BOTH files -- the same value, same user:
+       ${DEST}/mariadb-mcp.env   DB_PASSWORD=
+       ${DEST}/dbhub.env         DBHUB_DB_PASSWORD=
+     and point DB_HOST / dbhub.toml's host= at a database you can actually reach.
+     mariadb-mcp connects eagerly and crash-loops if it cannot; DBHub is lazy, so
+     a wrong credential there shows up later as a pool timeout on a query rather
+     than at startup.
+  4. scripts/dev-register-client.sh   (needs hydra running; sets AUTH_FLOW_CLIENT_ID)
+
+Then: scripts/validate-mcp-path.sh --local
 EOF

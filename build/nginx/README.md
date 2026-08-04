@@ -68,7 +68,7 @@ spot, so the script prints the file's capture date on every run.
 | a redirect loses the port | T4 missed — `$http_host`, not `$host` |
 | `open() "/etc/nginx/cors_headers" failed` | the bind mount path was wrong, so Docker created a **directory** there |
 | `/db-compare` returns 500 | the `/_authz` subrequest failed. `auth_request` maps anything that is not 2xx/401/403 to 500 — usually headless-ts is down |
-| `/db-tools` returns 502 | mariadb-mcp is down. Expected on a machine with no reachable MariaDB (T9) — it no longer takes nginx with it |
+| `/db-tools` returns 502 | mariadb-mcp is down — it exits at startup when it cannot reach the database (check `DB_HOST`/`DB_PASSWORD` in mariadb-mcp.env). T9 keeps it from taking nginx with it |
 
 ## Prerequisites
 
