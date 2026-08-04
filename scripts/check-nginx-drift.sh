@@ -49,13 +49,14 @@ fi
 # before comparing -- the ROUTING is identical, only the resolution timing
 # differs, and everything else about the location stays under comparison.
 normalize() {
-  if grep -q '\$mcp_tools_upstream' "$1"; then
-    # Balanced one-liner: the awk below tracks brace depth, so this must not
-    # leave an unclosed block.
-    printf 'upstream mcp-tools { }\n'
-  fi
+  # Balanced one-liners: the awk below tracks brace depth, so these must not
+  # leave an unclosed block.
+  grep -q '\$mcp_tools_upstream' "$1" && printf 'upstream mcp-tools { }\n'
+  grep -q '\$mcp_tools_healthcheck_upstream' "$1" && printf 'upstream mcp-tools-healthcheck { }\n'
   sed -e '/^[ \t]*resolver /d' \
+      -e '/^[ \t]*set \$mcp_tools_healthcheck_upstream/d' \
       -e '/^[ \t]*set \$mcp_tools_upstream/d' \
+      -e 's|http://\$mcp_tools_healthcheck_upstream/|http://mcp-tools-healthcheck/|' \
       -e 's|http://\$mcp_tools_upstream/|http://mcp-tools/|' \
       "$1"
 }
