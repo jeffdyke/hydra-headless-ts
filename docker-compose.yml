@@ -112,63 +112,6 @@ services:
     networks:
       - hydra-net
     restart: unless-stopped
-  # Multi-source database MCP, served at /db-compare. Config and credential are
-  # written by Salt (salt/dbhub/init.sls) into /etc/hydra-headless-ts.
-  #
-  # v1.0.0 WATCHES dbhub.toml and hot-reloads it ("Detected change in ...,
-  # reloading configuration..." in the log), so editing sources, tools or limits
-  # needs no restart at all -- verified by changing a description and seeing the
-  # running server serve it. The credential is different: ${DBHUB_DB_PASSWORD} is
-  # resolved from the process environment, and env_file is only read when the
-  # container is created, so a password change needs `up -d --force-recreate`
-  # (a plain `restart` reuses the old environment).
-  #
-  # Upstream image rather than an ECR mirror: DBHub is not a fork we maintain.
-  # Pinned rather than :latest -- v1.0.0 is recent (2026-07-29), so re-check
-  # before bumping.
-  #
-  # DBHub does not authenticate HTTP clients. Publishing 9002 makes it reachable
-  # on the host, so the nginx /db-compare location must have auth_request enabled
-  # before this is exposed.
-  dbhub:
-    image: bytebase/dbhub:1.0.0
-    container_name: dbhub
-    command:
-      - --transport
-      - http
-      - --host
-      - 0.0.0.0
-      - --port
-      - "9002"
-      - --config
-      - /etc/hydra-headless-ts/dbhub.toml
-      # DBHub rejects a request whose Host header is not on this list (DNS-rebind
-      # protection), defaulting to localhost/127.0.0.1/[::1]/container id/IP.
-      # nginx does not set a Host header for this backend, so it sends the nginx
-      # default of $proxy_host -- the UPSTREAM NAME, `dbhub-tools`, which is not
-      # on that list and gets a bare 403.
-      #
-      # This only shows up on the proxied path with a valid bearer, because
-      # without one the gate answers first and validate-mcp-path.sh falls back to
-      # --direct-mcp on localhost:9002, which is allowed. So it passed every
-      # tokenless run while being broken for real clients.
-      #
-      # `dbhub-tools` rather than the public hostname on purpose: the upstream
-      # name comes from the backend_mappings key, so it is identical in dev and
-      # staging and needs no per-environment list. localhost is kept so
-      # --direct-mcp still works.
-      - --allowed-hosts
-      - dbhub-tools,localhost,127.0.0.1
-    env_file: /etc/hydra-headless-ts/dbhub.env
-    ports:
-      - "9002:9002"
-    volumes:
-      - /var/log/bondlink:/var/log/bondlink
-      - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
-    # See the note on mariadb-mcp: this was on the default network too.
-    networks:
-      - hydra-net
-    restart: unless-stopped
 
   # Dev only. Staging and prod are served by the HOST nginx that salt manages
   # (salt/hydra-headless-ts -> /etc/nginx/conf.d/hydra.conf); this service exists
@@ -207,7 +150,6 @@ services:
       - hydra
       - headless-ts
       - mariadb-mcp
-      - dbhub
     networks:
       - hydra-net
     restart: unless-stopped

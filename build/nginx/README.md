@@ -5,9 +5,9 @@ and the same port staging uses. Staging and prod are **not** affected by anythin
 here: there, nginx runs on the host and Salt owns the config
 (`salt/hydra-headless-ts` → `/etc/nginx/conf.d/hydra.conf`).
 
-The reason this exists: the `auth_request` bearer gate on `/db-compare` is
-enforced by nginx, so without nginx in compose it could not be exercised without
-deploying. `scripts/validate-mcp-path.sh --local` now tests it.
+The reason this exists: routing, CORS, and the `.well-known` documents are all
+enforced by nginx, so without nginx in compose they could not be exercised
+without deploying. `scripts/validate-mcp-path.sh --local` now tests them.
 
 ## Layout
 
@@ -67,7 +67,6 @@ spot, so the script prints the file's capture date on every run.
 | 401 challenge names `https://localhost` or drops `:8888` | T8 missed — `$scheme://$http_host`, not `https://$host` |
 | a redirect loses the port | T4 missed — `$http_host`, not `$host` |
 | `open() "/etc/nginx/cors_headers" failed` | the bind mount path was wrong, so Docker created a **directory** there |
-| `/db-compare` returns 500 | the `/_authz` subrequest failed. `auth_request` maps anything that is not 2xx/401/403 to 500 — usually headless-ts is down |
 | `/db-tools` returns 502 | mariadb-mcp is down — it exits at startup when it cannot reach the database (check `DB_HOST`/`DB_PASSWORD` in mariadb-mcp.env). T9 keeps it from taking nginx with it |
 
 ## Prerequisites

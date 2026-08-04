@@ -1,8 +1,8 @@
 /**
  * Authorization endpoint for nginx's auth_request.
  *
- * The MCP backends behind this proxy — mariadb-mcp and DBHub — do not validate
- * bearer tokens themselves. Without this endpoint the OAuth flow only gates
+ * The MCP backend behind this proxy — mariadb-mcp — does not validate bearer
+ * tokens itself. Without this endpoint the OAuth flow only gates
  * *obtaining* a token; anything that could reach the backend port could use the
  * MCP tools without presenting one. nginx calls here before proxying (see the
  * /_authz location in salt/hydra-headless-ts/etc/nginx/conf.d/hydra.conf).
