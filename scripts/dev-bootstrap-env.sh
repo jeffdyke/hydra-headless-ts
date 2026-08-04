@@ -26,6 +26,7 @@ MAP=(
   "build/support_files/dbhub/dbhub.toml:dbhub.toml"
   "build/support_files/hydra/hydra.local.yml:hydra.yml"
   "build/support_files/hydra-headless-ts/local.env.sample:local.env"
+  "build/support_files/hydra-headless-ts/allowed_emails_db-compare.txt:allowed_emails_db-compare.txt"
 )
 
 copied=0
@@ -93,7 +94,11 @@ Still manual after this:
      mariadb-mcp connects eagerly and crash-loops if it cannot; DBHub is lazy, so
      a wrong credential there shows up later as a pool timeout on a query rather
      than at startup.
-  4. scripts/dev-register-client.sh   (needs hydra running; sets AUTH_FLOW_CLIENT_ID)
+  4. Add your own address to ${DEST}/allowed_emails_db-compare.txt
+     (the \`email\` claim in your token). A missing or empty per-resource list
+     denies EVERYONE -- it does not fall back to allowed_emails.txt -- and shows
+     up as a 403 from /authz after the token has already verified fine.
+  5. scripts/dev-register-client.sh   (needs hydra running; sets AUTH_FLOW_CLIENT_ID)
 
 Then: scripts/validate-mcp-path.sh --local
 EOF

@@ -63,6 +63,11 @@ Three steps stay manual, and the bootstrap prints all of them:
 3. Set the database password in **both** `mariadb-mcp.env` (`DB_PASSWORD`) and
    `dbhub.env` (`DBHUB_DB_PASSWORD`) — same user, so the same value — and point
    `DB_HOST` / `dbhub.toml`'s `host =` at a database you can reach.
+4. Add your address to `allowed_emails_db-compare.txt`. A **missing or empty
+   per-resource list denies everyone** — it does not fall back to
+   `allowed_emails.txt`. Use the `email` claim from your token, which may not be
+   the account you assume: `bondlink.com`'s domain entry in the global list gets
+   you past that check, but the per-resource list is individual addresses only.
 
 ## What each stage actually proves
 
@@ -152,6 +157,7 @@ everything through stage 4, including the whole gate, still runs.
 | challenge says `https://localhost` or drops `:8888` | T8 regression |
 | a redirect loses the port | T4 regression — `$host` strips it, `$http_host` doesn't |
 | `open() "/etc/nginx/cors_headers" failed` | a bind-mount path was wrong, so Docker created a **directory** there |
+| `/authz` → 403 with a token that `validate-token` accepts | your address is not in `allowed_emails_db-compare.txt`, or the file is missing (deny-all). The token verified fine — this is authorization, not authentication |
 | stage 5 pool timeout | DBHub reached, database not. Usually `DBHUB_DB_PASSWORD` still `change-me`, or disagreeing with `mariadb-mcp.env`'s `DB_PASSWORD` |
 
 ## Isolating a leg
