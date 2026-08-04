@@ -97,6 +97,35 @@ export const JWTService = Context.GenericTag<JWTService>('JWTService')
 export type JWTProvider = 'hydra' | 'google'
 
 /**
+ * Claims `verify` insists on, per provider.
+ *
+ * These are the claims whose ABSENCE means the token did not come from where we
+ * think it did. They are checked in addition to — never instead of — the
+ * signature, issuer and audience, which jwtVerify enforces for both providers.
+ * Neither list is a relaxation of trust; they differ only because the two
+ * providers mint different tokens.
+ *
+ * hydra: sign() builds the JWT itself and sets all three, so a token missing any
+ * of them was not issued by us.
+ *
+ * google: sign() returns Google's ID token verbatim (see the Google branch), and
+ * Google does not issue `jti` or `client_id` at all. Its published
+ * claims_supported are exactly:
+ *   aud, email, email_verified, exp, family_name, given_name,
+ *   iat, iss, name, picture, sub
+ * (https://accounts.google.com/.well-known/openid-configuration)
+ * Requiring jti/client_id therefore rejected *every* genuine Google token —
+ * the app could not verify the tokens it had just issued. `email` is required
+ * because it is the identity the allowlist is keyed on: routes/authz-fp.ts
+ * denies outright when it is absent, so a token without it is useless anyway,
+ * and failing here says why.
+ */
+const REQUIRED_CLAIMS: Record<JWTProvider, readonly (keyof JWTClaims)[]> = {
+  hydra: ['sub', 'jti', 'client_id'],
+  google: ['sub', 'email'],
+}
+
+/**
  * JWT Service configuration
  */
 export interface JWTConfig {
@@ -280,9 +309,17 @@ export const makeJWTService = (config: JWTConfig): JWTService => {
               audience: config.audience,
             })
 
-            // Validate required claims
-            if (!payload.sub || !payload.jti || !payload.client_id) {
-              throw new Error('Missing required claims in JWT')
+            // Validate required claims for THIS provider. Naming the missing
+            // claim matters: the previous message said only "Missing required
+            // claims in JWT", which for a Google token was both unactionable and
+            // misleading, since the claim it wanted could never be present.
+            const missing = REQUIRED_CLAIMS[config.provider].filter(
+              (claim) => !payload[claim]
+            )
+            if (missing.length > 0) {
+              throw new Error(
+                `Missing required claims for provider '${config.provider}': ${missing.join(', ')}`
+              )
             }
 
             return payload as JWTClaims

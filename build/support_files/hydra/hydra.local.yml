@@ -80,9 +80,24 @@ oauth2:
   expose_internal_errors: true
 # Placeholders on purpose. The file this was derived from carries the STAGING
 # values, which salt keeps in pillar/staging/hydra-headless-ts/locked.sls -- they
-# do not belong in this repo, and a local Hydra does not need them: any value
-# works as long as it is stable, because changing them invalidates existing
-# tokens and cookies. Generate your own with `openssl rand -hex 16`.
+# do not belong in this repo. Generate your own with `openssl rand -hex 16`.
+#
+# WARNING -- changing secrets.system against an EXISTING Hydra database breaks
+# it. Hydra encrypts its signing keys with this value, so on an already-migrated
+# database a different secret makes every key undecryptable and Hydra answers 500
+# to /.well-known/openid-configuration with:
+#
+#   Could not ensure that signing keys for "hydra.openid.id-token" exists ...
+#   because your "secrets.system" is not set or changed
+#
+# Either keep the secret the database was created with, or start clean:
+#
+#   docker compose down -v && docker compose up -d postgres hydra
+#
+# (`down -v` drops the postgres volume, so the OAuth client goes too -- re-run
+# scripts/dev-register-client.sh afterwards.) Rotating properly instead means
+# putting the old value in secrets.system as a second list item; Hydra decrypts
+# with any listed secret and re-encrypts with the first.
 secrets:
   system:
     - local-dev-system-secret-change-me
