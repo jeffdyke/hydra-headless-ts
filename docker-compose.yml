@@ -29,6 +29,7 @@ services:
     volumes:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+      - /var/www/html:/var/www/html:ro
     depends_on:
       - hydra-migrate
     networks:
