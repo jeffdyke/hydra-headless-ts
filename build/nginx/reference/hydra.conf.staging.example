@@ -8,6 +8,12 @@
 #
 # A stale baseline is the one failure mode of the drift check, so the script
 # prints this file's mtime on every run.
+#
+# NOTE: the `map $request_uri $mcp_resource` block below, and the removal of the
+# two `set $mcp_resource` lines it replaces, were applied BY HAND to match the
+# salt template change (auth_request wipes a `set` in the subrequest). Everything
+# else is still the verbatim capture. Re-capture from a staging host once that
+# template change is deployed, and this note can go.
 
 upstream public_api {
   server 10.1.2.247:4444;
@@ -28,6 +34,11 @@ upstream hydra-headless-ts {
   server 10.1.2.247:3000;
 }
 
+
+map $request_uri $mcp_resource {
+  default "";
+  ~^/db-compare "db-compare";
+}
 
 server {
   listen 8888 proxy_protocol;
@@ -124,7 +135,6 @@ server {
     proxy_set_header X-CSRF-TOKEN $http_x_csrf_token;
     proxy_set_header X-XSRF-TOKEN $http_x_xsrf_token;
   }
-  set $mcp_resource "";
 
   location = /_authz {
     internal;
@@ -161,7 +171,6 @@ server {
   location /db-compare {
     include /etc/nginx/cors_headers;
     include /etc/nginx/options_request;
-    set $mcp_resource "db-compare";
     auth_request /_authz;
     error_page 401 = @mcp_unauthorized;
     proxy_set_header X-Real-IP $remote_addr;

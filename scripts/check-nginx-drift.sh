@@ -86,6 +86,19 @@ extract() {
     # compares equal on both sides no matter what.
     { o = gsub(/\{/, "{"); c = gsub(/\}/, "}") }
 
+    # The map that assigns $mcp_resource decides which paths are gated, so it is
+    # compared rather than ignored: a resource silently dropping out of it
+    # disables that gate just as effectively as removing auth_request.
+    /^map .*\$mcp_resource/ && o > 0 { flush(); inmap=1; depth += o - c; next }
+    inmap == 1 {
+      depth += o - c
+      if (depth == 0) { inmap = 0; next }
+      if ($0 ~ /^default/) next
+      e=$0; sub(/;$/, "", e); gsub(/"/, "", e); gsub(/ +/, ":", e)
+      maps = maps (maps=="" ? "" : ",") e
+      next
+    }
+
     /^upstream / { up=$2; ups = ups (ups=="" ? "" : ",") up; depth += o - c; next }
     /^server / && o > 0 { flush(); depth += o - c; next }
     /^location / && o > 0 {
@@ -131,6 +144,7 @@ extract() {
       for (i=1; i<=n; i++) for (j=i+1; j<=n; j++) if (a[j] < a[i]) { t=a[i]; a[i]=a[j]; a[j]=t }
       s=""; for (i=1; i<=n; i++) s = s (s=="" ? "" : ",") a[i]
       printf "upstreams=%s\n", s
+      printf "mcp_resource_map=%s\n", (maps=="" ? "ABSENT" : maps)
       printf "server_mcp_resource_default=%s\n", (srv_default=="" ? "ABSENT" : srv_default)
     }
   ' | sort
