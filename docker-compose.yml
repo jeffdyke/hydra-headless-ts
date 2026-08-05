@@ -111,33 +111,40 @@ services:
     volumes:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
-  # Default/legacy instance: still the ungated bare /db-tools alias (unlike the
-  # named instances below, which are gated -- see build/nginx/dev/conf.d/hydra.conf).
-  mariadb-mcp:
-    <<: *mariadb-mcp-base
-    container_name: mariadb-mcp
-    env_file: /etc/hydra-headless-ts/mariadb-mcp.env
-    ports:
-      - "9001:9001"
-
-  # Named connection, gated at /db-tools/staging-db-galera-prime. One of N
-  # sources from pillar mariadb-mcp:sources (salt/mariadb-mcp/init.sls renders
-  # one env file per entry); add another service the same shape for each
-  # additional source, changing only container_name/env_file/ports.
+  # Template for every mariadb-mcp instance -- the default `mariadb-mcp` plus
+  # one per servers-pillar node flagged mcp_auth_db: true (salt/mariadb-mcp/
+  # init.sls renders one env file per instance). Neither is declared here:
+  # which instances actually exist varies per environment (staging/prod have
+  # different node counts, and a default instance is not guaranteed to exist
+  # -- see pillar/<env>/servers/init.sls's mcp_default_db flag and
+  # pillar/base/mariadb-mcp's max_mcp_server cap, both in the salt repo), so
+  # real service blocks live in the generated docker-compose.mariadb-mcp.
+  # <env>.yml (ci/generate_mariadb_mcp_compose.py in the salt repo, committed
+  # here and CI-verified not to have drifted from current pillar), each
+  # `extends:`ing this one and setting only container_name/env_file/ports.
+  # docker-compose.mariadb-mcp.dev.yml is the hand-maintained equivalent for
+  # local dev, which has no Salt to generate one.
+  #
+  # Exists only as an `extends:` target -- every real invocation always passes
+  # both `-f docker-compose.yml` and an env's `-f docker-compose.mariadb-mcp.
+  # <env>.yml`, so this is never started on its own in practice. It has no
+  # `profiles:` guard: this Compose version (verified empirically) drops the
+  # whole `extends:` chain -- silently, no error -- for any service that
+  # extends a profile-gated target not in the active profile set, which broke
+  # every real instance rather than just excluding this template. A bare
+  # `docker compose up` with no service names DOES start this (verified) since
+  # nothing marks it inactive -- it immediately fails with no env_file (no
+  # DB_HOST/DB_PASSWORD), so `restart: "no"` overrides the anchor's
+  # `unless-stopped` here specifically: it exits once and stays Exited rather
+  # than cycling Restarting forever in `docker compose ps`.
   #
   # Every mariadb-mcp container listens on 9001 INSIDE the container --
   # build/Dockerfile.mariadb-mcp's ENTRYPOINT hardcodes --port 9001, it isn't
-  # configurable per-instance. Only the published HOST port varies (9003 here,
-  # matching pillar mariadb-mcp:sources[].port on the salt side, which staging/
-  # prod's host nginx uses directly since it isn't on hydra-net). nginx in this
-  # compose file reaches it by service name on the container's real port
-  # (mariadb-mcp-staging-db-galera-prime:9001), never through 9003.
-  mariadb-mcp-staging-db-galera-prime:
+  # configurable per-instance. Only the published HOST port varies per
+  # instance (see whichever docker-compose.mariadb-mcp.*.yml is in play).
+  mariadb-mcp-base:
     <<: *mariadb-mcp-base
-    container_name: mariadb-mcp-staging-db-galera-prime
-    env_file: /etc/hydra-headless-ts/mariadb-mcp-staging-db-galera-prime.env
-    ports:
-      - "9003:9001"
+    restart: "no"
 
   # Dev only. Staging and prod are served by the HOST nginx that salt manages
   # (salt/hydra-headless-ts -> /etc/nginx/conf.d/hydra.conf); this service exists
@@ -175,8 +182,11 @@ services:
     depends_on:
       - hydra
       - headless-ts
-      - mariadb-mcp
-      - mariadb-mcp-staging-db-galera-prime
+      # mariadb-mcp instance names vary per environment/fragment (see
+      # mariadb-mcp-base's comment above), so they aren't listed here --
+      # docker-compose.mariadb-mcp.dev.yml adds its own depends_on entries
+      # for this same `nginx` service, which Compose merges (does not
+      # replace) with this list when both files are passed to `-f`.
     networks:
       - hydra-net
     restart: unless-stopped

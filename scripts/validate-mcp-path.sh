@@ -3,15 +3,16 @@
 # (for a gated resource) the bearer gate -> a mariadb-mcp session -> a query
 # against a named database.
 #
-# Only bare /db-tools (the default/legacy instance) is ungated. Every named
-# instance from pillar mariadb-mcp:sources (e.g. /db-tools/staging-db-galera-prime)
-# sits behind the same auth_request gate dbhub's /db-compare used to. Pass
-# --gated for those; the default resource stays ungated unless you say so.
+# Only bare /db-tools (the default instance) is ungated. Every named instance
+# -- one per servers-pillar node flagged mcp_auth_db: true on real infra, e.g.
+# /db-tools/example locally -- sits behind the same auth_request gate dbhub's
+# /db-compare used to. Pass --gated for those; the default resource stays
+# ungated unless you say so.
 #
-#   scripts/validate-mcp-path.sh --local                                   # default, ungated
-#   scripts/validate-mcp-path.sh --local --resource staging-db-galera-prime --gated --token "$TOK"
+#   scripts/validate-mcp-path.sh --local                            # default, ungated
+#   scripts/validate-mcp-path.sh --local --resource example --gated --token "$TOK"
 #   scripts/validate-mcp-path.sh --local \
-#     --resources db-tools,staging-db-galera-prime:gated --token "$TOK"    # both in one run
+#     --resources db-tools,example:gated --token "$TOK"              # both in one run
 #
 # Exit status is 0 only if every stage that ran passed. Skipped stages do not
 # fail the run, but the summary says what was skipped so a green result cannot be

@@ -6,13 +6,14 @@ mariadb-mcp MCP session → a database query.
 This is about the **live path**, not the unit tests. For those see
 [README.test.md](README.test.md) (vitest) and [DEVELOPMENT.md](DEVELOPMENT.md).
 
-Note: bare `/db-tools` (the default/legacy mariadb-mcp instance) is not behind
-an nginx `auth_request` gate. Every *named* instance — one per entry in salt
-pillar `mariadb-mcp:sources`, reached at `/db-tools/<name>` — IS gated the same
-way dbhub's `/db-compare` used to be, since it replaced that capability. This
-repo carries one dev-testable named instance,
-`mariadb-mcp-staging-db-galera-prime` (port 9003), as the template for adding
-more; see docker-compose.yml's `x-mariadb-mcp` anchor.
+Note: bare `/db-tools` (the default mariadb-mcp instance) is not behind an
+nginx `auth_request` gate. Every *named* instance — one per servers-pillar
+node flagged `mcp_auth_db: true` on real infra, reached at `/db-tools/<name>`
+— IS gated the same way dbhub's `/db-compare` used to be, since it replaced
+that capability. This repo carries one dev-testable named instance,
+`mariadb-mcp-example` (port 9010), as the template for adding more; see
+docker-compose.yml's `mariadb-mcp-base` service and
+docker-compose.mariadb-mcp.dev.yml.
 
 ## Why this exists
 
@@ -34,10 +35,10 @@ Both report per-item PASS / FAIL / SKIP and exit non-zero on failure, and the
 summary lists every skip, so a green run can't be mistaken for full coverage.
 
 ```bash
-scripts/validate-mcp-path.sh --local                                  # bare /db-tools, ungated
-scripts/validate-mcp-path.sh --local --resource staging-db-galera-prime --gated --token "$TOK"
+scripts/validate-mcp-path.sh --local                            # bare /db-tools, ungated
+scripts/validate-mcp-path.sh --local --resource example --gated --token "$TOK"
 scripts/validate-mcp-path.sh --local \
-  --resources db-tools,staging-db-galera-prime:gated --token "$TOK"   # both in one run
+  --resources db-tools,example:gated --token "$TOK"              # both in one run
 npm run check:nginx-drift
 ```
 
@@ -45,13 +46,13 @@ npm run check:nginx-drift
 
 ```bash
 scripts/dev-bootstrap-env.sh     # copies samples into /etc/hydra-headless-ts
-docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.mariadb-mcp.dev.yml up -d
 scripts/dev-register-client.sh   # one-time, and after any `docker compose down -v`
 ```
 
 `docker compose up` treats a **missing `env_file` as fatal for the whole stack**,
 not just the one service — so without `mariadb-mcp.env` (or
-`mariadb-mcp-staging-db-galera-prime.env`) nothing starts at all. That's what
+`mariadb-mcp-example.env`) nothing starts at all. That's what
 the bootstrap is for. It never overwrites an existing file; it prints a diff
 instead, because the files it targets hold real credentials.
 
@@ -64,9 +65,9 @@ Manual steps stay manual, and the bootstrap prints all of them:
    `http://localhost:8888` as a JavaScript origin) on that Google client. Exact
    match — the port matters. Nothing in this repo can do it for you.
 3. Set `mariadb-mcp.env`'s `DB_PASSWORD` and point `DB_HOST` at a database you
-   can reach. Same for `mariadb-mcp-staging-db-galera-prime.env` — it's a
+   can reach. Same for `mariadb-mcp-example.env` — it's a
    second, independent connection, not a copy of the first.
-4. Add your address to `allowed_emails_staging-db-galera-prime.txt`. Unlike
+4. Add your address to `allowed_emails_example.txt`. Unlike
    bare `/db-tools`, the named path IS gated — a missing or empty per-resource
    list denies everyone.
 
@@ -139,9 +140,9 @@ at startup, well before stage 4's MCP session runs.
 # mariadb-mcp -> database, skipping nginx entirely (default instance)
 scripts/validate-mcp-path.sh --local --direct-mcp http://localhost:9001/mcp
 
-# same, for the named instance (its own published port, per docker-compose.yml)
-scripts/validate-mcp-path.sh --local --resource staging-db-galera-prime --gated \
-  --direct-mcp http://localhost:9003/mcp
+# same, for the named instance (its own published port, per docker-compose.mariadb-mcp.dev.yml)
+scripts/validate-mcp-path.sh --local --resource example --gated \
+  --direct-mcp http://localhost:9010/mcp
 
 # the pre-nginx layout (app on :3000, mariadb-mcp on :9001 directly)
 scripts/validate-mcp-path.sh --no-nginx
@@ -189,13 +190,19 @@ separately.
 | 8888 | nginx | the entry point; everything should be tested through here |
 | 3000 | headless-ts | |
 | 9001 | mariadb-mcp (default instance) | not gated either way; needed for `--direct-mcp` |
-| 9003 | mariadb-mcp-staging-db-galera-prime | gated at `/db-tools/staging-db-galera-prime`; port itself bypasses the gate, needed for `--direct-mcp` |
+| 9010 | mariadb-mcp-example | gated at `/db-tools/example`; port itself bypasses the gate, needed for `--direct-mcp` |
 | 4444/4445 | hydra public / admin | |
 
-Adding another named source means picking the next free port (9002 is free
-since dbhub's removal, 9004+ after that) and keeping it identical across
-docker-compose.yml's `ports:`, the dev nginx conf's `set $mcp_tools_<name>_upstream`,
-and — on the salt side — the matching `mariadb-mcp:sources[].port` pillar value.
+Adding another named source locally means picking a free port and adding a
+service to docker-compose.mariadb-mcp.dev.yml (`extends: {file:
+docker-compose.yml, service: mariadb-mcp-base}`), then a matching location in
+the dev nginx conf. On real infra there's no picking involved: a node's port
+comes from its `mcp_port` in pillar/<env>/servers/init.sls, and
+ci/generate_mariadb_mcp_compose.py (salt repo) plus salt/hydra-headless-ts's
+`get_mcp_auth_db()`-driven backend_mappings render the matching compose
+fragment and nginx routing directly from that pillar -- see
+docker-compose.mariadb-mcp.staging.yml / .prod.yml, both CI-verified not to
+drift from it.
 
 The backend ports are published for isolation testing. Narrowing them to
 `127.0.0.1:` is worth doing if that bothers you — `--direct-mcp` still works.

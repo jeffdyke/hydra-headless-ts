@@ -1,7 +1,9 @@
-# DEV SAMPLE -> copy to /etc/hydra-headless-ts/allowed_emails_staging-db-galera-prime.txt
+# DEV SAMPLE -> copy to /etc/hydra-headless-ts/allowed_emails_example.txt
 #
-# Per-resource allowlist for `staging-db-galera-prime` (mariadb-mcp connected to
-# the env_galera_cluster prime node, at /db-tools/staging-db-galera-prime).
+# Per-resource allowlist for `example` -- the one named, gated mariadb-mcp
+# instance carried for local dev (docker-compose.mariadb-mcp.dev.yml's
+# mariadb-mcp-example service, at /db-tools/example). Point its DB_HOST at
+# whatever database you have locally; it's a template, not a specific node.
 # Checked *in addition to* allowed_emails.txt, never instead of it -- an address
 # must pass both, so removing someone from the global list revokes every
 # resource.

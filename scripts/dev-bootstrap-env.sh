@@ -22,10 +22,10 @@ FORCE=0
 # sample -> destination filename
 MAP=(
   "build/support_files/mariadb-mcp/mariadb-mcp.env:mariadb-mcp.env"
-  "build/support_files/mariadb-mcp/mariadb-mcp-staging-db-galera-prime.env:mariadb-mcp-staging-db-galera-prime.env"
+  "build/support_files/mariadb-mcp/mariadb-mcp-example.env:mariadb-mcp-example.env"
   "build/support_files/hydra/hydra.local.yml:hydra.yml"
   "build/support_files/hydra-headless-ts/local.env.sample:local.env"
-  "build/support_files/hydra-headless-ts/allowed_emails_staging-db-galera-prime.txt:allowed_emails_staging-db-galera-prime.txt"
+  "build/support_files/hydra-headless-ts/allowed_emails_example.txt:allowed_emails_example.txt"
 )
 
 copied=0
@@ -89,12 +89,13 @@ Still manual after this:
   3. Set ${DEST}/mariadb-mcp.env's DB_PASSWORD, and point DB_HOST at a database
      you can actually reach. mariadb-mcp connects eagerly and crash-loops if it
      cannot, so a wrong value shows up immediately rather than on first query.
-     Same for ${DEST}/mariadb-mcp-staging-db-galera-prime.env -- it's a second,
-     independent instance/connection, not a copy of the first.
-  4. Add your address to ${DEST}/allowed_emails_staging-db-galera-prime.txt.
-     Unlike bare /db-tools, /db-tools/staging-db-galera-prime IS gated -- a
-     missing or empty per-resource list denies everyone.
+     Same for ${DEST}/mariadb-mcp-example.env -- it's a second, independent
+     instance/connection, not a copy of the first.
+  4. Add your address to ${DEST}/allowed_emails_example.txt.
+     Unlike bare /db-tools, /db-tools/example IS gated -- a missing or empty
+     per-resource list denies everyone.
   5. scripts/dev-register-client.sh   (needs hydra running; sets AUTH_FLOW_CLIENT_ID)
 
-Then: scripts/validate-mcp-path.sh --local
+Then: docker compose -f docker-compose.yml -f docker-compose.mariadb-mcp.dev.yml up -d
+      scripts/validate-mcp-path.sh --local
 EOF
