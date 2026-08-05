@@ -176,4 +176,109 @@ jeff@example.com
       expect(isEmailAllowed('bondlink.com')).toBe(false)
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // Per-resource allowlists
+  //
+  // These gate nginx's auth_request for MCP endpoints that must be narrower than
+  // the global list — which in practice is a whole domain. The two properties
+  // worth protecting: a resource list only ever *narrows*, and a missing file
+  // denies rather than falling back to the domain.
+  // ---------------------------------------------------------------------------
+
+  describe('per-resource allowlists', () => {
+    /**
+     * Resource files are resolved as allowed_emails_<resource>.txt next to the
+     * global list, so the fs mock is keyed by path. `resources` maps a resource
+     * name to its file content; anything absent is treated as a missing file.
+     */
+    const loadWithResources = async (
+      globalContent: string,
+      resources: Record<string, string>
+    ) => {
+      const mockError = vi.fn()
+
+      vi.doMock('../../logging-effect.js', () => ({
+        syncLogger: { info: vi.fn(), error: mockError, debug: vi.fn(), warn: vi.fn() },
+      }))
+
+      const pathFor = (resource: string) => `allowed_emails_${resource}.txt`
+      const contentFor = (p: string): string | undefined => {
+        if (!p.includes('allowed_emails_')) return globalContent
+        const hit = Object.keys(resources).find((r) => p.endsWith(pathFor(r)))
+        return hit === undefined ? undefined : resources[hit]
+      }
+
+      vi.doMock('fs', () => ({
+        default: {
+          readFileSync: vi.fn().mockImplementation((p: string) => {
+            const content = contentFor(p)
+            if (content === undefined) throw new Error(`ENOENT: ${p}`)
+            return content
+          }),
+          existsSync: vi.fn().mockImplementation((p: string) => contentFor(p) !== undefined),
+        },
+      }))
+
+      const mod = await import('./emailAllowlist.js')
+      return { isEmailAllowedForResource: mod.isEmailAllowedForResource, mockError }
+    }
+
+    it('allows an address listed in both the global and resource lists', async () => {
+      const { isEmailAllowedForResource } = await loadWithResources('bondlink.com\n', {
+        'db-compare': 'justin@bondlink.com\n',
+      })
+      expect(isEmailAllowedForResource('justin@bondlink.com', 'db-compare')).toBe(true)
+    })
+
+    it('narrows the global list rather than replacing it', async () => {
+      // The whole point: the domain grants global access, but only the named
+      // address reaches the resource.
+      const { isEmailAllowedForResource } = await loadWithResources('bondlink.com\n', {
+        'db-compare': 'justin@bondlink.com\n',
+      })
+      expect(isEmailAllowedForResource('someoneelse@bondlink.com', 'db-compare')).toBe(false)
+    })
+
+    it('denies an address on the resource list but not the global list', async () => {
+      // Removing someone globally must revoke every resource, even if a stale
+      // resource file still names them.
+      const { isEmailAllowedForResource } = await loadWithResources('bondlink.com\n', {
+        'db-compare': 'contractor@elsewhere.com\n',
+      })
+      expect(isEmailAllowedForResource('contractor@elsewhere.com', 'db-compare')).toBe(false)
+    })
+
+    it('denies everyone when the resource file is missing', async () => {
+      // Must not fall back to the global list — that would silently widen a
+      // restricted endpoint to the whole domain the first time Salt failed to
+      // write the file.
+      const { isEmailAllowedForResource, mockError } = await loadWithResources(
+        'bondlink.com\n',
+        {}
+      )
+      expect(isEmailAllowedForResource('justin@bondlink.com', 'db-compare')).toBe(false)
+      expect(mockError).toHaveBeenCalledWith(
+        expect.stringContaining('No allowlist for protected resource'),
+        expect.objectContaining({ resource: 'db-compare' })
+      )
+    })
+
+    it('keeps resources independent of one another', async () => {
+      const { isEmailAllowedForResource } = await loadWithResources('bondlink.com\n', {
+        'db-compare': 'justin@bondlink.com\n',
+        'other-tool': 'carl@bondlink.com\n',
+      })
+      expect(isEmailAllowedForResource('justin@bondlink.com', 'db-compare')).toBe(true)
+      expect(isEmailAllowedForResource('justin@bondlink.com', 'other-tool')).toBe(false)
+      expect(isEmailAllowedForResource('carl@bondlink.com', 'other-tool')).toBe(true)
+    })
+
+    it('supports a domain entry in a resource list', async () => {
+      const { isEmailAllowedForResource } = await loadWithResources('bondlink.com\n', {
+        'wide-open': 'bondlink.com\n',
+      })
+      expect(isEmailAllowedForResource('anyone@bondlink.com', 'wide-open')).toBe(true)
+    })
+  })
 })

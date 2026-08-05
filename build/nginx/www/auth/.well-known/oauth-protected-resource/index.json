@@ -1,0 +1,14 @@
+{
+  "error": "multiple_resources",
+  "error_description": "Multiple protected resources are available at this host. Please specify the resource path.",
+  "available_resources": [
+    {
+      "resource": "http://localhost:8888/db-tools",
+      "metadata_url": "http://localhost:8888/.well-known/oauth-protected-resource/db-tools"
+    },
+    {
+      "resource": "http://localhost:8888/db-compare",
+      "metadata_url": "http://localhost:8888/.well-known/oauth-protected-resource/db-compare"
+    }
+  ]
+}

@@ -1,0 +1,192 @@
+# Rendered by salt from salt/hydra-headless-ts/etc/nginx/conf.d/hydra.conf.
+# Captured from the staging host's /etc/nginx/conf.d/hydra.conf on 2026-08-03.
+#
+# NOT mounted anywhere. This is the baseline for scripts/check-nginx-drift.sh,
+# which compares it against build/nginx/dev/conf.d/hydra.conf. Refresh with:
+#   ssh <staging-host> cat /etc/nginx/conf.d/hydra.conf \
+#     > build/nginx/reference/hydra.conf.staging.example
+#
+# A stale baseline is the one failure mode of the drift check, so the script
+# prints this file's mtime on every run.
+#
+# NOTE: the `map $request_uri $mcp_resource` block below, and the removal of the
+# two `set $mcp_resource` lines it replaces, were applied BY HAND to match the
+# salt template change (auth_request wipes a `set` in the subrequest). Everything
+# else is still the verbatim capture. Re-capture from a staging host once that
+# template change is deployed, and this note can go.
+#
+# NOTE: the dbhub upstream, its map entry, and both `/db-compare` locations were
+# also removed BY HAND ahead of the matching change in the salt repo (out of
+# scope here -- dbhub is being dropped from hydra-headless-ts only). Re-capture
+# from a staging host once that change ships, and this note can go too.
+
+upstream public_api {
+  server 10.1.2.247:4444;
+}
+upstream admin_api {
+  server 10.1.2.247:4445;
+}
+
+upstream mcp-tools {
+  server 10.1.2.247:9001;
+}
+
+upstream mcp-tools-healthcheck {
+  server 10.1.2.247:9001;
+}
+
+upstream hydra-headless-ts {
+  server 10.1.2.247:3000;
+}
+
+
+map $request_uri $mcp_resource {
+  default "";
+}
+
+server {
+  listen 8888 proxy_protocol;
+  server_name oauth.staging.bondlink.org oauth-passive.staging.bondlink.org;
+  add_header 'Access-Control-Allow-Credentials' 'true';
+  location ~ ^(.+)/$ {
+    return 301 $scheme://$host$1;
+  }
+
+  location ~ ^/(admin|clients|keys|health|metrics|version|oauth2/auth/requests|oauth2/introspect|oauth2/flush) {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    proxy_pass http://admin_api;
+    proxy_redirect    off;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header  Host               $host;
+    proxy_set_header  X-Real-IP          $remote_addr;
+    proxy_set_header  X-Forwarded-For    $proxy_add_x_forwarded_for;
+    proxy_set_header  X-Forwarded-Proto  $http_x_forwarded_proto;
+    proxy_set_header X-CSRF-TOKEN $http_x_csrf_token;
+    proxy_set_header X-XSRF-TOKEN $http_x_xsrf_token;
+  }
+
+  location = /.well-known/oauth-authorization-server {
+   include /etc/nginx/cors_headers;
+   include /etc/nginx/options_request;
+   proxy_pass http://public_api/.well-known/openid-configuration;
+  }
+  # oauth2/auth and oauth2/token && oauth2/register are managed by hydra-headless-ts
+  # the former is proxied to hydra, the latter is all in the application
+  location ~ ^/(.well-known|oauth2/sessions|oauth2/revoke|oauth2/fallbacks/consent|oauth2/fallbacks/error|userinfo) {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    proxy_pass http://public_api;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header  Host              "auth.staging.bondlink.org";
+    proxy_set_header  X-Real-IP         $remote_addr;
+    proxy_set_header  X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header  X-Forwarded-Proto $http_x_forwarded_proto;
+    proxy_set_header X-CSRF-TOKEN $http_x_csrf_token;
+    proxy_set_header X-XSRF-TOKEN $http_x_xsrf_token;
+  }
+
+  location = /.well-known/oauth-protected-resource {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    alias /var/www/html/auth/.well-known/oauth-protected-resource/index.json;
+    add_header Content-Type application/json;
+  }
+
+
+  location /hostname.html {
+    root /var/www/html;
+    add_header X-HAProxy-Force-Backend stagingops;
+    try_files $uri =404;
+  }
+  location /hostname {
+    root /var/www/html;
+    add_header X-HAProxy-Force-Backend stagingops;
+    try_files $uri =404;
+  }
+
+
+  location = /.well-known/oauth-protected-resource/db-tools {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    root /var/www/html/auth;
+    try_files $uri.json $uri =404;
+    add_header Content-Type application/json;
+  }
+
+  location / {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    try_files $uri $uri/ @hydra-headless-ts;
+  }
+
+  location @hydra-headless-ts {
+    proxy_pass http://hydra-headless-ts;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header  Host              "auth.staging.bondlink.org";
+    proxy_set_header  X-Real-IP         $remote_addr;
+    proxy_set_header  X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header  X-Forwarded-Proto $http_x_forwarded_proto;
+    proxy_set_header X-CSRF-TOKEN $http_x_csrf_token;
+    proxy_set_header X-XSRF-TOKEN $http_x_xsrf_token;
+  }
+
+  location = /_authz {
+    internal;
+    proxy_pass http://hydra-headless-ts/authz;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Host "auth.staging.bondlink.org";
+    proxy_set_header X-Original-URI $request_uri;
+    proxy_set_header X-Original-Method $request_method;
+    proxy_set_header X-MCP-Resource $mcp_resource;
+    proxy_set_header Authorization $http_authorization;
+  }
+  location @mcp_unauthorized {
+    add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+    add_header 'Vary' 'Origin' always;
+    add_header 'Access-Control-Allow-Credentials' 'true' always;
+    add_header 'WWW-Authenticate' 'Bearer resource_metadata="https://$host/.well-known/oauth-protected-resource/$mcp_resource"' always;
+    return 401;
+  }
+
+  location /db-tools {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    chunked_transfer_encoding on;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass http://mcp-tools/mcp;
+  }
+
+  location /healthcheck {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    chunked_transfer_encoding on;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass http://mcp-tools-healthcheck/mcp;
+  }
+
+  location ~ ^/(consent|logout|auth|callback|oauth2) {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    chunked_transfer_encoding on;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass http://hydra-headless-ts;
+  }
+
+}

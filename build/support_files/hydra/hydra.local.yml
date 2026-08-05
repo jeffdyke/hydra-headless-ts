@@ -1,0 +1,106 @@
+# DEV SAMPLE -> copy to /etc/hydra-headless-ts/hydra.yml
+#
+#   cp /etc/hydra-headless-ts/hydra.yml /etc/hydra-headless-ts/hydra.yml.bak
+#   cp build/support_files/hydra/hydra.local.yml /etc/hydra-headless-ts/hydra.yml
+#   docker compose restart hydra
+#
+# The file that ships on a workstation today is a STAGING clone: issuer, public,
+# consent, login and logout all point at auth.staging.bondlink.org, and admin
+# points at the staging VPC address 10.1.1.230. That is fine for exercising the
+# bearer gate (token validation goes to Google's JWKS and never touches the
+# issuer), but a browser login started at localhost:8888 bounces to staging and
+# never comes back. This variant keeps everything else identical and moves only
+# the URLs -- diff it against hydra.yml.bak to see exactly what changed.
+#
+# `dev: True` plus `serve all --dev` (docker-compose.yml) is what lets Hydra
+# accept a plain http:// issuer at all.
+log:
+  level: trace
+  leak_sensitive_values: true
+  redaction_text: ""
+  format: json
+dsn: postgres://hydra:my-super-secret-password@postgres:5432/hydra?sslmode=disable
+serve:
+  cookies:
+    same_site_mode: Lax
+    # `domain: bondlink.org` REMOVED on purpose. A cookie scoped to bondlink.org
+    # is never sent to localhost, so Hydra's login/consent challenge round-trip
+    # silently loses its session and the browser loops back to /login forever --
+    # with no error anywhere. Omitting the key gives host-only cookies, which is
+    # what localhost needs.
+  public:
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:8888
+        - http://localhost:6274
+        - https://claude.ai
+      allowed_methods:
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+      debug: true
+  admin:
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:8888
+      allowed_methods:
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+
+
+urls:
+  self:
+    issuer: http://localhost:8888
+    public: http://localhost:8888
+    # Compose service name: this is resolved from inside the hydra container.
+    admin: http://hydra:4445
+  consent: "http://localhost:8888/consent"
+  login: "http://localhost:8888/login"
+  logout: "http://localhost:8888/logout"
+
+webfinger:
+  oidc_discovery:
+    client_registration_url: http://localhost:8888/oauth2/register
+
+oidc:
+  subject_identifiers:
+    supported_types:
+      - pairwise
+      - public
+    pairwise:
+      salt: local-dev-pairwise-salt-not-a-secret
+  dynamic_client_registration:
+    enabled: true
+oauth2:
+  expose_internal_errors: true
+# Placeholders on purpose. The file this was derived from carries the STAGING
+# values, which salt keeps in pillar/staging/hydra-headless-ts/locked.sls -- they
+# do not belong in this repo. Generate your own with `openssl rand -hex 16`.
+#
+# WARNING -- changing secrets.system against an EXISTING Hydra database breaks
+# it. Hydra encrypts its signing keys with this value, so on an already-migrated
+# database a different secret makes every key undecryptable and Hydra answers 500
+# to /.well-known/openid-configuration with:
+#
+#   Could not ensure that signing keys for "hydra.openid.id-token" exists ...
+#   because your "secrets.system" is not set or changed
+#
+# Either keep the secret the database was created with, or start clean:
+#
+#   docker compose down -v && docker compose up -d postgres hydra
+#
+# (`down -v` drops the postgres volume, so the OAuth client goes too -- re-run
+# scripts/dev-register-client.sh afterwards.) Rotating properly instead means
+# putting the old value in secrets.system as a second list item; Hydra decrypts
+# with any listed secret and re-encrypts with the first.
+secrets:
+  system:
+    - local-dev-system-secret-change-me
+  cookie:
+    - local-dev-cookie-secret-change-me
+dev: True
