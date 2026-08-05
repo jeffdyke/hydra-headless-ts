@@ -3,6 +3,27 @@ name: hydra
 volumes:
   postgres-data:
 
+# Shared shape for every mariadb-mcp instance (the default below plus one per
+# named source in a service like mariadb-mcp-<name>). One image, N containers --
+# the image takes no per-instance build arg (connection config is 100% runtime
+# env), so this anchor exists only to avoid repeating image/build/volumes/
+# networks/restart per instance. Each instance service only needs to set
+# container_name, env_file and ports.
+x-mariadb-mcp: &mariadb-mcp-base
+  image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest
+  build:
+    context: .
+    dockerfile: build/Dockerfile.mariadb-mcp
+    platforms:
+      - linux/amd64
+      - linux/arm64
+  volumes:
+    - /var/log/bondlink:/var/log/bondlink
+    - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+  networks:
+    - hydra-net
+  restart: unless-stopped
+
 services:
   hydra-migrate:
     image: oryd/hydra:v25.4.0-arm64
@@ -90,28 +111,33 @@ services:
     volumes:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+  # Default/legacy instance: still the ungated bare /db-tools alias (unlike the
+  # named instances below, which are gated -- see build/nginx/dev/conf.d/hydra.conf).
   mariadb-mcp:
-    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest
-    build:
-      context: .
-      dockerfile: build/Dockerfile.mariadb-mcp
-      platforms:
-        - linux/amd64
-        - linux/arm64
+    <<: *mariadb-mcp-base
     container_name: mariadb-mcp
     env_file: /etc/hydra-headless-ts/mariadb-mcp.env
     ports:
       - "9001:9001"
-    volumes:
-      - /var/log/bondlink:/var/log/bondlink
-      - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
-    # Was absent, which put this service on the compose *default* network while
-    # everything else sat on hydra-net -- so nothing could reach it by name. It
-    # only ever worked via the published host port. nginx resolves upstreams by
-    # service name, so this is a prerequisite, not a tidy-up.
-    networks:
-      - hydra-net
-    restart: unless-stopped
+
+  # Named connection, gated at /db-tools/staging-db-galera-prime. One of N
+  # sources from pillar mariadb-mcp:sources (salt/mariadb-mcp/init.sls renders
+  # one env file per entry); add another service the same shape for each
+  # additional source, changing only container_name/env_file/ports.
+  #
+  # Every mariadb-mcp container listens on 9001 INSIDE the container --
+  # build/Dockerfile.mariadb-mcp's ENTRYPOINT hardcodes --port 9001, it isn't
+  # configurable per-instance. Only the published HOST port varies (9003 here,
+  # matching pillar mariadb-mcp:sources[].port on the salt side, which staging/
+  # prod's host nginx uses directly since it isn't on hydra-net). nginx in this
+  # compose file reaches it by service name on the container's real port
+  # (mariadb-mcp-staging-db-galera-prime:9001), never through 9003.
+  mariadb-mcp-staging-db-galera-prime:
+    <<: *mariadb-mcp-base
+    container_name: mariadb-mcp-staging-db-galera-prime
+    env_file: /etc/hydra-headless-ts/mariadb-mcp-staging-db-galera-prime.env
+    ports:
+      - "9003:9001"
 
   # Dev only. Staging and prod are served by the HOST nginx that salt manages
   # (salt/hydra-headless-ts -> /etc/nginx/conf.d/hydra.conf); this service exists
@@ -150,6 +176,7 @@ services:
       - hydra
       - headless-ts
       - mariadb-mcp
+      - mariadb-mcp-staging-db-galera-prime
     networks:
       - hydra-net
     restart: unless-stopped

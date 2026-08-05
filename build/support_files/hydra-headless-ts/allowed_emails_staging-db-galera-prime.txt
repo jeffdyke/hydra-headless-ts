@@ -1,0 +1,20 @@
+# DEV SAMPLE -> copy to /etc/hydra-headless-ts/allowed_emails_staging-db-galera-prime.txt
+#
+# Per-resource allowlist for `staging-db-galera-prime` (mariadb-mcp connected to
+# the env_galera_cluster prime node, at /db-tools/staging-db-galera-prime).
+# Checked *in addition to* allowed_emails.txt, never instead of it -- an address
+# must pass both, so removing someone from the global list revokes every
+# resource.
+#
+# If this file is missing or unreadable the app denies EVERYONE rather than
+# falling back to the global list (isEmailAllowedForResource in
+# src/fp/services/emailAllowlist.ts returns false on a null list).
+#
+# Format: bare lines are domains, lines containing @ are individual addresses,
+# # comments and blank lines ignored.
+#
+# ADD YOUR OWN ADDRESS -- the one in your Google ID token's `email` claim:
+#   node scripts/dev-google-token.mjs   (it prints the email)
+# or `npm run validate-token -- $TOK`.
+
+# your.name@bondlink.com

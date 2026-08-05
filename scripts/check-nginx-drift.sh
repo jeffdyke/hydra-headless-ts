@@ -48,17 +48,49 @@ fi
 # stop nginx from starting. Rewrite that back into the canonical upstream form
 # before comparing -- the ROUTING is identical, only the resolution timing
 # differs, and everything else about the location stays under comparison.
+#
+# This is now N-aware: every location that resolves this way declares its own
+# $mcp_tools_<name>_upstream variable (default instance: $mcp_tools_upstream,
+# healthcheck: $mcp_tools_healthcheck_upstream, a named source:
+# $mcp_tools_<name>_upstream with underscores for hyphens), so this discovers
+# whichever variables the file actually uses rather than hardcoding two names.
 normalize() {
-  # Balanced one-liners: the awk below tracks brace depth, so these must not
-  # leave an unclosed block.
-  grep -q '\$mcp_tools_upstream' "$1" && printf 'upstream mcp-tools { }\n'
-  grep -q '\$mcp_tools_healthcheck_upstream' "$1" && printf 'upstream mcp-tools-healthcheck { }\n'
-  sed -e '/^[ \t]*resolver /d' \
-      -e '/^[ \t]*set \$mcp_tools_healthcheck_upstream/d' \
-      -e '/^[ \t]*set \$mcp_tools_upstream/d' \
-      -e 's|http://\$mcp_tools_healthcheck_upstream/|http://mcp-tools-healthcheck/|' \
-      -e 's|http://\$mcp_tools_upstream/|http://mcp-tools/|' \
-      "$1"
+  sed -e '/^[ \t]*resolver /d' "$1" | awk '
+    function derive_name(v,    suffix, name) {
+      suffix = v
+      sub(/^\$mcp_tools_/, "", suffix)
+      sub(/upstream$/, "", suffix)
+      sub(/_$/, "", suffix)
+      name = (suffix == "") ? "mcp-tools" : "mcp-tools-" suffix
+      gsub(/_/, "-", name)
+      return name
+    }
+    function esc(s,    r) {
+      r = s
+      gsub(/[.^$*+?()\[\]{}|\\]/, "\\\\&", r)
+      return r
+    }
+    {
+      line = $0
+      # A location declares `set $mcp_tools_<name>_upstream "...";` before its
+      # own `proxy_pass http://$mcp_tools_<name>_upstream/mcp;`, so by the time
+      # this proxy_pass line is reached in the same pass, v/name already name
+      # the variable it uses.
+      if (match(line, /\$mcp_tools_[A-Za-z0-9_]*upstream/)) {
+        v = substr(line, RSTART, RLENGTH)
+        name = derive_name(v)
+        seen[v] = name
+      }
+      if (line ~ /^[ \t]*set \$mcp_tools_[A-Za-z0-9_]*upstream/) next
+      if (match(line, /\$mcp_tools_[A-Za-z0-9_]*upstream/)) {
+        gsub("http://" esc(v) "/", "http://" name "/", line)
+      }
+      print line
+    }
+    END {
+      for (v in seen) printf "upstream %s { }\n", seen[v]
+    }
+  '
 }
 
 extract() {
