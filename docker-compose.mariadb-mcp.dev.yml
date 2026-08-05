@@ -1,0 +1,34 @@
+# Hand-maintained equivalent of docker-compose.mariadb-mcp.{staging,prod}.yml
+# for local dev, which has no Salt/servers-pillar to generate one from.
+# Carries one default instance (bare /db-tools, ungated) and one named
+# example instance (gated at /db-tools/example) -- the template for adding
+# more locally; see docker-compose.yml's mariadb-mcp-base service. Update
+# nginx's depends_on below to match if you add or rename an instance here.
+
+services:
+
+  mariadb-mcp:
+    extends:
+      file: docker-compose.yml
+      service: mariadb-mcp-base
+    container_name: mariadb-mcp
+    env_file: /etc/hydra-headless-ts/mariadb-mcp.env
+    ports:
+      - "9001:9001"
+
+  mariadb-mcp-example:
+    extends:
+      file: docker-compose.yml
+      service: mariadb-mcp-base
+    container_name: mariadb-mcp-example
+    env_file: /etc/hydra-headless-ts/mariadb-mcp-example.env
+    ports:
+      - "9010:9001"
+
+  # Compose merges (does not replace) a service's list-type fields --
+  # depends_on included -- across -f files, so this adds to docker-compose.yml's
+  # own `nginx: depends_on: [hydra, headless-ts]` rather than overriding it.
+  nginx:
+    depends_on:
+      - mariadb-mcp
+      - mariadb-mcp-example
