@@ -194,7 +194,8 @@ if [ -n "$hydra_running" ]; then
 fi
 
 echo "Docker $(which docker) version: $(docker --version)"
-docker compose -f "${COMPOSE_FILE}" build headless-ts --platform "${ONLY_ARCH:-linux/amd64,linux/arm64}"
+export DOCKER_DEFAULT_PLATFORM=$ONLY_ARCH
+docker compose -f "${COMPOSE_FILE}" build headless-ts
 
 # Only outside CI. The `sudo docker compose up` that used to sit below this
 # block was unguarded and duplicated it, so every CI run also tried to start a
