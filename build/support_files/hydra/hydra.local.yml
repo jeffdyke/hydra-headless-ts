@@ -5,7 +5,7 @@
 #   docker compose restart hydra
 #
 # The file that ships on a workstation today is a STAGING clone: issuer, public,
-# consent, login and logout all point at auth.staging.bondlink.org, and admin
+# consent, login and logout all point at oauth.staging.bondlink.org, and admin
 # points at the staging VPC address 10.1.1.230. That is fine for exercising the
 # bearer gate (token validation goes to Google's JWKS and never touches the
 # issuer), but a browser login started at localhost:8888 bounces to staging and

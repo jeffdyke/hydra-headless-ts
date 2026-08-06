@@ -94,7 +94,7 @@ steps below, and none of those failures mean broken code.
 
 **1. The local config is a staging clone.** `/etc/hydra-headless-ts/hydra.env` is
 a symlink to `local.env`, which points `BASE_URL`, `HYDRA_PUBLIC_URL` and
-`HYDRA_ADMIN_HOST` at `auth.staging.bondlink.org` / `10.1.1.230`; `hydra.yml`
+`HYDRA_ADMIN_HOST` at `oauth.staging.bondlink.org` / `10.1.1.230`; `hydra.yml`
 does the same for `issuer`, `login`, `consent`, `logout`.
 
 Consequences: `headless-ts` loops on `ensure-client` against a staging admin API
