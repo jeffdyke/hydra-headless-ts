@@ -91,7 +91,7 @@ steps:
       # doesn't support secrets, set DOCKER_BUILDKIT=1 to use BuildKit").
       # docker-cli-buildx supplies that; compose detects and uses it
       # automatically once it's on the plugin path.
-      - apk add docker-cli-compose docker-cli-buildx
+      - apk add docker-cli-compose docker-cli-buildx aws-cli
       - bash build/rebuild.sh --ci
     depends_on:
       - run-tests
