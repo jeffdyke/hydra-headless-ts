@@ -16,7 +16,7 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "${SCRIPT_DIR}/shared.sh"
-
+ONLY_ARCH=
 IS_CI=0
 # Any non-empty, non-zero SKIP_GIT_CHECKS counts as force, so both
 # SKIP_GIT_CHECKS=1 and SKIP_GIT_CHECKS=true behave the way they read.
@@ -37,6 +37,15 @@ done
 
 if [ $IS_CI -eq 1 ]; then
   hydra_running=
+  arch=$(uname -m)
+  case "$arch" in
+    x86_64) ONLY_ARCH=linux/amd64 ;;
+    aarch64) ONLY_ARCH=linux/arm64 ;;
+    *)
+      echo "error: unrecognized architecture '$arch'" >&2
+      exit 1
+      ;;
+  esac
 else
   hydra_running=$(docker ps --filter "name=hydra-headless-ts-1" -q) # Running or restarting, it needs to be stopped
 fi
@@ -185,7 +194,7 @@ if [ -n "$hydra_running" ]; then
 fi
 
 echo "Docker $(which docker) version: $(docker --version)"
-docker compose -f "${COMPOSE_FILE}" build headless-ts
+docker compose -f "${COMPOSE_FILE}" build headless-ts --platform "${ONLY_ARCH:-linux/amd64,linux/arm64}"
 
 # Only outside CI. The `sudo docker compose up` that used to sit below this
 # block was unguarded and duplicated it, so every CI run also tried to start a
