@@ -85,7 +85,13 @@ steps:
       - { "name": "bldeploy-pat", path: "/var/bondlink/tmp/.github" }
     environment: *ci
     commands:
-      - apk add docker-cli-compose
+      # docker-cli-compose alone is the classic (non-BuildKit) builder, which
+      # can't do the GIT_ASKPASS secrets:-mount build/rebuild.sh relies on to
+      # keep the clone PAT out of `docker history` ("the classic builder
+      # doesn't support secrets, set DOCKER_BUILDKIT=1 to use BuildKit").
+      # docker-cli-buildx supplies that; compose detects and uses it
+      # automatically once it's on the plugin path.
+      - apk add docker-cli-compose docker-cli-buildx
       - bash build/rebuild.sh --ci
     depends_on:
       - run-tests
