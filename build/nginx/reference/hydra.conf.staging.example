@@ -19,6 +19,21 @@
 # also removed BY HAND ahead of the matching change in the salt repo (out of
 # scope here -- dbhub is being dropped from hydra-headless-ts only). Re-capture
 # from a staging host once that change ships, and this note can go too.
+#
+# NOTE: the mcp-tools-staging-db-galera-prime upstream, its map entry, its
+# well-known location and its gated /db-tools/staging-db-galera-prime location
+# were also added BY HAND ahead of the matching salt pillar/state change
+# (pillar mariadb-mcp:sources, synthesized into backend_mappings -- see
+# hydra-headless-ts/init.sls and etc/nginx/conf.d/hydra.conf). Re-capture once
+# that ships, and this note can go too.
+#
+# NOTE: staging-db-galera-prime was then replaced BY HAND with the three
+# actual mcp_auth_db: true nodes in pillar/staging/servers/init.sls --
+# stagingdb01 (mcp_port 9012), stagingdb02 (9011), stagingdb05 (9010) -- once
+# the salt side moved off the removed pillar mariadb-mcp:sources list onto
+# get_mcp_auth_db() (salt/common/vpc_topology_macros.jinja2), which returns
+# one entry per node flagged mcp_auth_db: true rather than a hand-curated
+# list. Re-capture once that ships, and this note can go too.
 
 upstream public_api {
   server 10.1.2.247:4444;
@@ -35,6 +50,18 @@ upstream mcp-tools-healthcheck {
   server 10.1.2.247:9001;
 }
 
+upstream mcp-tools-stagingdb01 {
+  server 10.1.2.247:9012;
+}
+
+upstream mcp-tools-stagingdb02 {
+  server 10.1.2.247:9011;
+}
+
+upstream mcp-tools-stagingdb05 {
+  server 10.1.2.247:9010;
+}
+
 upstream hydra-headless-ts {
   server 10.1.2.247:3000;
 }
@@ -42,6 +69,9 @@ upstream hydra-headless-ts {
 
 map $request_uri $mcp_resource {
   default "";
+  ~^/db-tools/stagingdb01 "stagingdb01";
+  ~^/db-tools/stagingdb02 "stagingdb02";
+  ~^/db-tools/stagingdb05 "stagingdb05";
 }
 
 server {
@@ -114,6 +144,30 @@ server {
     add_header Content-Type application/json;
   }
 
+  location = /.well-known/oauth-protected-resource/stagingdb01 {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    root /var/www/html/auth;
+    try_files $uri.json $uri =404;
+    add_header Content-Type application/json;
+  }
+
+  location = /.well-known/oauth-protected-resource/stagingdb02 {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    root /var/www/html/auth;
+    try_files $uri.json $uri =404;
+    add_header Content-Type application/json;
+  }
+
+  location = /.well-known/oauth-protected-resource/stagingdb05 {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    root /var/www/html/auth;
+    try_files $uri.json $uri =404;
+    add_header Content-Type application/json;
+  }
+
   location / {
     include /etc/nginx/cors_headers;
     include /etc/nginx/options_request;
@@ -174,6 +228,51 @@ server {
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
     proxy_pass http://mcp-tools-healthcheck/mcp;
+  }
+
+  location /db-tools/stagingdb01 {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    auth_request /_authz;
+    error_page 401 = @mcp_unauthorized;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    chunked_transfer_encoding on;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass http://mcp-tools-stagingdb01/mcp;
+  }
+
+  location /db-tools/stagingdb02 {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    auth_request /_authz;
+    error_page 401 = @mcp_unauthorized;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    chunked_transfer_encoding on;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass http://mcp-tools-stagingdb02/mcp;
+  }
+
+  location /db-tools/stagingdb05 {
+    include /etc/nginx/cors_headers;
+    include /etc/nginx/options_request;
+    auth_request /_authz;
+    error_page 401 = @mcp_unauthorized;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Accept-Encoding "";
+    chunked_transfer_encoding on;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_pass http://mcp-tools-stagingdb05/mcp;
   }
 
   location ~ ^/(consent|logout|auth|callback|oauth2) {

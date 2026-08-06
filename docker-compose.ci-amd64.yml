@@ -1,0 +1,21 @@
+# CI-only override: restricts headless-ts to a single build platform.
+#
+# docker-compose.yml declares build.platforms: [linux/amd64, linux/arm64] for
+# desktop use, where buildx is available and a multi-platform build just works.
+# CI agents only have the classic `docker-cli-compose` plugin (no buildx), which
+# fails outright on a multi-entry platforms list:
+#   "the classic builder doesn't support multi-arch build, set DOCKER_BUILDKIT=1"
+# Each CI host now builds and pushes only its own native arch, so it needs
+# exactly one entry here, not the desktop default.
+#
+# `platforms:` is list-valued, and compose merges list fields by APPENDING
+# override values onto the base file's list rather than replacing it -- so a
+# plain override here would produce [amd64, arm64, amd64]. `!override` is the
+# compose-spec merge tag that replaces the field instead. build/rebuild.sh picks
+# this file (or the arm64 counterpart) based on `uname -m` and passes it as an
+# extra `-f` only when running with --ci.
+services:
+  headless-ts:
+    build:
+      platforms: !override
+        - linux/amd64

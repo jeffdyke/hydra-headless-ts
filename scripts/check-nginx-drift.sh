@@ -48,21 +48,116 @@ fi
 # stop nginx from starting. Rewrite that back into the canonical upstream form
 # before comparing -- the ROUTING is identical, only the resolution timing
 # differs, and everything else about the location stays under comparison.
+#
+# This is now N-aware: every location that resolves this way declares its own
+# $mcp_tools_<name>_upstream variable (default instance: $mcp_tools_upstream,
+# healthcheck: $mcp_tools_healthcheck_upstream, a named source:
+# $mcp_tools_<name>_upstream with underscores for hyphens), so this discovers
+# whichever variables the file actually uses rather than hardcoding two names.
 normalize() {
-  # Balanced one-liners: the awk below tracks brace depth, so these must not
-  # leave an unclosed block.
-  grep -q '\$mcp_tools_upstream' "$1" && printf 'upstream mcp-tools { }\n'
-  grep -q '\$mcp_tools_healthcheck_upstream' "$1" && printf 'upstream mcp-tools-healthcheck { }\n'
-  sed -e '/^[ \t]*resolver /d' \
-      -e '/^[ \t]*set \$mcp_tools_healthcheck_upstream/d' \
-      -e '/^[ \t]*set \$mcp_tools_upstream/d' \
-      -e 's|http://\$mcp_tools_healthcheck_upstream/|http://mcp-tools-healthcheck/|' \
-      -e 's|http://\$mcp_tools_upstream/|http://mcp-tools/|' \
-      "$1"
+  sed -e '/^[ \t]*resolver /d' "$1" | awk '
+    function derive_name(v,    suffix, name) {
+      suffix = v
+      sub(/^\$mcp_tools_/, "", suffix)
+      sub(/upstream$/, "", suffix)
+      sub(/_$/, "", suffix)
+      name = (suffix == "") ? "mcp-tools" : "mcp-tools-" suffix
+      gsub(/_/, "-", name)
+      return name
+    }
+    function esc(s,    r) {
+      r = s
+      gsub(/[.^$*+?()\[\]{}|\\]/, "\\\\&", r)
+      return r
+    }
+    {
+      line = $0
+      # A location declares `set $mcp_tools_<name>_upstream "...";` before its
+      # own `proxy_pass http://$mcp_tools_<name>_upstream/mcp;`, so by the time
+      # this proxy_pass line is reached in the same pass, v/name already name
+      # the variable it uses.
+      if (match(line, /\$mcp_tools_[A-Za-z0-9_]*upstream/)) {
+        v = substr(line, RSTART, RLENGTH)
+        name = derive_name(v)
+        seen[v] = name
+      }
+      if (line ~ /^[ \t]*set \$mcp_tools_[A-Za-z0-9_]*upstream/) next
+      if (match(line, /\$mcp_tools_[A-Za-z0-9_]*upstream/)) {
+        gsub("http://" esc(v) "/", "http://" name "/", line)
+      }
+      print line
+    }
+    END {
+      for (v in seen) printf "upstream %s { }\n", seen[v]
+    }
+  '
+}
+
+# How many named mariadb-mcp instances exist, and what they're called, is
+# now environment/pillar-driven (get_mcp_auth_db() in the salt repo) and
+# expected to differ per environment -- dev also intentionally keeps just one
+# generic named example (see LOCAL_TESTING.md) rather than mirroring every
+# real source. So before the structural comparison: keep only the first named
+# instance found in each file (by /db-tools/<name> location order) and rename
+# it to a fixed placeholder in every form it appears (upstream block or
+# synthetic upstream normalize() already emitted for T9's request-time style,
+# location, well-known resource doc, map entry). Any additional named
+# instance is dropped entirely, not just renamed -- reference legitimately
+# having more of them than dev is exactly what this collapses away.
+first_named_instance() {
+  grep -m1 -oE '^  location /db-tools/[A-Za-z0-9_-]+ \{' "$1" \
+    | sed -E 's#.*/db-tools/([A-Za-z0-9_-]+).*#\1#'
+}
+
+collapse_named_instances() {
+  local rawfile="$1" name
+  name="$(first_named_instance "$rawfile")"
+  awk -v first="$name" '
+    function is_first(n) { return first != "" && n == first }
+    # normalize()s synthetic upstream (T9 form) is a one-liner; a real static
+    # upstream block spans until its own closing brace -- handled separately.
+    /^upstream mcp-tools-[A-Za-z0-9_-]+ \{ \}$/ {
+      n = $2; sub(/^mcp-tools-/, "", n)
+      if (n == "healthcheck") { print; next }
+      if (!is_first(n)) next
+    }
+    /^upstream mcp-tools-[A-Za-z0-9_-]+ \{$/ {
+      n = $2; sub(/^mcp-tools-/, "", n); sub(/\{$/, "", n); gsub(/ /, "", n)
+      if (n == "healthcheck") { print; next }
+      if (!is_first(n)) { skip = 1; next }
+    }
+    skip && /^\}$/ { skip = 0; next }
+    skip { next }
+    /^  location \/db-tools\/[A-Za-z0-9_-]+ \{/ {
+      n = $0; sub(/^  location \/db-tools\//, "", n); sub(/ \{.*/, "", n)
+      if (!is_first(n)) { skiploc = 1; next }
+    }
+    skiploc && /^  \}$/ { skiploc = 0; next }
+    skiploc { next }
+    /^  location = \/\.well-known\/oauth-protected-resource\/[A-Za-z0-9_-]+ \{/ {
+      n = $0; sub(/^  location = \/\.well-known\/oauth-protected-resource\//, "", n); sub(/ \{.*/, "", n)
+      if (n != "db-tools" && !is_first(n)) { skipwk = 1; next }
+    }
+    skipwk && /^  \}$/ { skipwk = 0; next }
+    skipwk { next }
+    /^  ~\^\/db-tools\/[A-Za-z0-9_-]+ / {
+      n = $0; sub(/^  ~\^\/db-tools\//, "", n); sub(/ .*/, "", n)
+      if (!is_first(n)) next
+    }
+    {
+      if (first != "") {
+        gsub("mcp-tools-" first, "mcp-tools-NAMED")
+        gsub("/db-tools/" first, "/db-tools/NAMED")
+        gsub("oauth-protected-resource/" first, "oauth-protected-resource/NAMED")
+        gsub("\"" first "\"", "\"NAMED\"")
+      }
+      print
+    }
+  '
 }
 
 extract() {
-  normalize "$1" | awk '
+  normalize "$1" | collapse_named_instances "$1" | awk '
     function flush() {
       if (loc != "") {
         printf "loc=%s|inc=%s|authreq=%s|res=%s|err401=%s|pass=%s|alias=%s|root=%s|tryfiles=%s\n",
@@ -190,6 +285,12 @@ intentionally not compared (see T1-T8 in the dev conf header):
   Host / X-Forwarded-Proto values         no HAProxy to set them
   $host vs $http_host, https vs $scheme   dev is http on a non-default port
   locations /hostname, /hostname.html     HAProxy ops URLs, no local equivalent
+  named mariadb-mcp instance identity     collapsed to one "NAMED" placeholder
+                                           on both sides (see
+                                           collapse_named_instances above) --
+                                           how many exist and what they're
+                                           called is pillar-driven per
+                                           environment now, not fixed
   the shared cors_headers/options_request fragments are not covered at all
 EOF
 
