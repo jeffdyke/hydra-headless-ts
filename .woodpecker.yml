@@ -1,0 +1,122 @@
+# Woodpecker CI (arm64) — runs ALONGSIDE Drone (.drone.yml, amd64) during the
+# migration. Same steps, pinned to arm64 agents via `labels` and pulling the
+# arch-suffixed CI image (drone-hydra-headless-ts:latest-arm64).
+#
+# There is no ECR-auth sidecar step: the agent host holds the registry
+# credentials, so the build steps just pull their own image.
+#
+# Shell variables in `commands` use the bare $VAR form on purpose. Woodpecker
+# runs envsubst over the raw file text BEFORE the YAML is parsed, so the
+# brace form of a free-text value (a commit message containing a colon and a
+# space) is inlined as a second mapping colon and fails the whole config to
+# compile — zero steps run. Bare $VAR is left alone at parse time and expanded
+# by the shell inside the container instead. Never write the brace form here,
+# comments included.
+#
+# HUMAN PREREQUISITES:
+#   1. Repo marked TRUSTED in Woodpecker (required for the host-path volumes).
+#   2. An arm64 agent registered with label  platform=linux/arm64.
+#   3. drone-hydra-headless-ts:latest-arm64 present in ECR.
+
+when:
+  # Workflow-wide event + branch filter, inherited by every step. Setting it once
+  # here means the status-only `when` on notify doesn't need its own event filter
+  # (Woodpecker flags a `when` with no event filter as a bad habit).
+  - event: [push, pull_request]
+    branch: RC
+
+labels:
+  platform: linux/arm64
+
+concurrency:
+  limit: 3
+
+# build/rebuild.sh hardcodes /src/hydra-headless-ts/docker-compose.yml, so this
+# path is load-bearing.
+workspace:
+  base: /src
+  path: hydra-headless-ts
+
+variables:
+  - &build-image 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest-arm64
+  # Host-path volumes use Woodpecker's inline host:container form.
+  - &docker-volume /var/run/docker.sock:/var/run/docker.sock
+  - &cache-volume /var/lib/woodpecker/cache:/cache
+  # The bldeploy PAT the runtime image build needs to clone this private repo
+  # (build/rebuild.sh reads exactly one file under it). Mirrors .drone.yml's
+  # bldeploy-pat volume, mounted read-only since the build only ever reads it.
+  - &pat-volume /var/bondlink/tmp/.github:/var/bondlink/tmp/.github:ro
+
+steps:
+  - name: init-build
+    image: ruby:3-alpine
+    volumes:
+      - *cache-volume
+    environment:
+      CI: "true"
+    commands:
+      - |
+        echo "Woodpecker agent: $CI_MACHINE"
+        echo "Build Number: $CI_PIPELINE_NUMBER"
+        echo $CI_PIPELINE_NUMBER > /cache/build.txt
+
+  # `npm run ci` == npm-run-all clean lint _tsc test -- same as .drone.yml.
+  # `npm run test:ci` names a script package.json has never defined.
+  - name: run-tests
+    image: *build-image
+    # Always re-pull: :latest-arm64 is a moving tag, and the agent would
+    # otherwise keep running a stale locally-cached copy of it.
+    pull: true
+    commands:
+      - npm run ci
+
+  # Builds the runtime image (build/Dockerfile.headless-ts, via compose) and
+  # pushes it to ECR under a build hash. No separate base-install step: an
+  # earlier version of this pipeline had one that ran this same `rebuild.sh
+  # --ci`, so the image was built and pushed twice per run -- the same bug
+  # .drone.yml's build-and-push comment describes fixing on the Drone side.
+  - name: build-and-push
+    image: *build-image
+    pull: true
+    volumes:
+      - *docker-volume
+      - *pat-volume
+    commands:
+      - apk add docker-cli-compose
+      - bash build/rebuild.sh --ci
+
+  # drillster/drone-email is published as a single linux/amd64 manifest -- not a
+  # manifest list -- so it cannot be pulled on an arm64 agent at all. It was only
+  # ever an SMTP sender to the internal relay, so msmtp does the same job on any
+  # arch, with no credential (the relay is unauthenticated on the LAN).
+  - name: notify
+    image: alpine:3
+    environment:
+      SMTP_HOST: prodsalt.bondlink.vpc
+      SMTP_PORT: "25"
+      MAIL_FROM: bldeploy@bondlink.com
+    commands:
+      - apk add --no-cache msmtp git
+      - |
+        to="$CI_COMMIT_AUTHOR_EMAIL"
+        [ -n "$to" ] || to="$(git show -s --format='%aE' HEAD)"
+        [ -n "$to" ] || to="$MAIL_FROM"
+        # Woodpecker exposes no current-pipeline status; this step only runs on
+        # failure, so the subject says so outright.
+        {
+          printf 'From: %s\n' "$MAIL_FROM"
+          printf 'To: %s\n' "$to"
+          printf 'Subject: [woodpecker] FAILED %s build #%s (%s)\n' \
+            "$CI_REPO" "$CI_PIPELINE_NUMBER" "$CI_COMMIT_BRANCH"
+          printf '\n'
+          printf 'Repository: %s\n' "$CI_REPO"
+          printf 'Branch:     %s\n' "$CI_COMMIT_BRANCH"
+          printf 'Commit:     %s\n' "$CI_COMMIT_SHA"
+          printf 'Author:     %s\n' "$CI_COMMIT_AUTHOR"
+          printf 'Event:      %s\n' "$CI_PIPELINE_EVENT"
+          printf 'Build:      %s\n' "$CI_PIPELINE_URL"
+          printf '\n%s\n' "$CI_COMMIT_MESSAGE"
+        } | msmtp --host="$SMTP_HOST" --port="$SMTP_PORT" --from="$MAIL_FROM" \
+              --auth=off --tls=off -- "$to"
+    when:
+      - status: [failure]
