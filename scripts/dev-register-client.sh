@@ -15,10 +15,7 @@
 #
 #   `npm run cli -- new-client` reads --env-file=./src/env/local.env (see
 #   package.json), NOT /etc/hydra-headless-ts, so it registers against whatever
-#   placeholder host that file names. It also hardcodes the redirect list in
-#   src/authFlow.ts:18, which contains "https://claude.ai/api/mcp_callback_auth"
-#   -- note that is not the URL in AUTH_FLOW.md (.../api/mcp/auth_callback). One
-#   of the two is wrong; this script uses the documented form.
+#   placeholder host that file names.
 set -uo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8888}"

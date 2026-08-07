@@ -15,7 +15,7 @@ export const newClient = (
     grant_types: ["authorization_code", "refresh_token"],
     scope: "openid email profile offline_access",
     response_types: ["code"],
-    redirect_uris: [`${appConfig.baseUrl}/callback`, "https://claude.ai/api/mcp_callback_auth"],
+    redirect_uris: [`${appConfig.baseUrl}/callback`, "https://claude.ai/api/mcp/auth_callback"],
     token_endpoint_auth_method: "none"
   }
   return pipe(
