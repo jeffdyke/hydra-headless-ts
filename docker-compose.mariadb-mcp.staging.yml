@@ -5,14 +5,14 @@
 
 services:
 
-  mariadb-mcp-stagingdb01:
+  mariadb-mcp:
     extends:
       file: docker-compose.yml
       service: mariadb-mcp-base
-    container_name: mariadb-mcp-stagingdb01
-    env_file: /etc/hydra-headless-ts/mariadb-mcp-stagingdb01.env
+    container_name: mariadb-mcp
+    env_file: /etc/hydra-headless-ts/mariadb-mcp.env
     ports:
-      - "9012:9001"
+      - "9001:9001"
 
   mariadb-mcp-stagingdb02:
     extends:
