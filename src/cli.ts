@@ -143,12 +143,23 @@ const formatError = (cause: Cause.Cause<unknown>): string => {
  * Format and print result
  */
 const printResult = (exit: Exit.Exit<unknown, unknown>) => {
+  // console, not Effect.logInfo/logError. Those CONSTRUCT an Effect and return
+  // it; as bare statements they were never run, so this function printed
+  // nothing whatsoever. `ensure-client` therefore exited 1 in total silence,
+  // which is worst of all in a container start-up pre-flight: the entrypoint
+  // reports that the check failed but nothing says why, and the operator cannot
+  // tell "client missing" from "admin API unreachable".
+  //
+  // The same construct-but-never-run pattern appears at other call sites in this
+  // file (the usage/validation messages); they are equally silent.
+  // Success goes to stdout so the payload can be piped or parsed; failures to
+  // stderr. (The lint config permits only console.warn/error, and console.log
+  // would be the wrong stream for a machine-readable result anyway.)
   if (Exit.isSuccess(exit)) {
-    Effect.logInfo('\nSuccess!')
-    Effect.logInfo(JSON.stringify(exit.value, null, 2))
+    process.stdout.write(`\nSuccess!\n${JSON.stringify(exit.value, null, 2)}\n`)
   } else {
-    Effect.logError('\nError!')
-    Effect.logError(formatError(exit.cause))
+    console.error('\nError!')
+    console.error(formatError(exit.cause))
     process.exit(1)
   }
 }
@@ -219,6 +230,15 @@ const commands: Record<string, CommandHandler> = {
     }
     Effect.logInfo(`Creating new client: ${clientName}...`)
     const program = authFlow.newClient(clientName)
+    const exit = await runEffect(program)
+    printResult(exit)
+  },
+
+  // Run this after any fresh install or suspected DB reset.
+  // Exits non-zero and prints instructions if the configured client is missing.
+  'ensure-client': async () => {
+    Effect.logInfo('Verifying configured OAuth2 client exists in Hydra...')
+    const program = authFlow.ensureClient()
     const exit = await runEffect(program)
     printResult(exit)
   },

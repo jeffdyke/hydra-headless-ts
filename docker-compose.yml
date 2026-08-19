@@ -3,6 +3,27 @@ name: hydra
 volumes:
   postgres-data:
 
+# Shared shape for every mariadb-mcp instance (the default below plus one per
+# named source in a service like mariadb-mcp-<name>). One image, N containers --
+# the image takes no per-instance build arg (connection config is 100% runtime
+# env), so this anchor exists only to avoid repeating image/build/volumes/
+# networks/restart per instance. Each instance service only needs to set
+# container_name, env_file and ports.
+x-mariadb-mcp: &mariadb-mcp-base
+  image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest
+  build:
+    context: .
+    dockerfile: build/Dockerfile.mariadb-mcp
+    platforms:
+      - linux/amd64
+      - linux/arm64
+  volumes:
+    - /var/log/bondlink:/var/log/bondlink
+    - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+  networks:
+    - hydra-net
+  restart: unless-stopped
+
 services:
   hydra-migrate:
     image: oryd/hydra:v25.4.0-arm64
@@ -29,6 +50,7 @@ services:
     volumes:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+      - /var/www/html:/var/www/html:ro
     depends_on:
       - hydra-migrate
     networks:
@@ -71,6 +93,13 @@ services:
       platforms:
         - linux/amd64
         - linux/arm64
+      args:
+        - GIT_BRANCH=${GIT_BRANCH}
+      # Replaces the old GIT_TOKEN build-arg: a build-arg is recorded verbatim
+      # in `docker history`, so the token travelled with the image. build/
+      # rebuild.sh writes the askpass script and exports GIT_ASKPASS_FILE.
+      secrets:
+        - github_askpass
     environment:
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       - NODE_ENV=development
@@ -82,22 +111,94 @@ services:
     volumes:
       - /var/log/hydra-headless-ts:/var/log/hydra-headless-ts
       - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
-  mariadb-mcp:
-    image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest
-    build:
-      context: .
-      dockerfile: build/Dockerfile.mariadb-mcp
-      platforms:
-        - linux/amd64
-        - linux/arm64
-    container_name: mariadb-mcp
-    env_file: /etc/hydra-headless-ts/mariadb-mcp.env
+  # Template for every mariadb-mcp instance -- the default `mariadb-mcp` plus
+  # one per servers-pillar node flagged mcp_auth_db: true (salt/mariadb-mcp/
+  # init.sls renders one env file per instance). Neither is declared here:
+  # which instances actually exist varies per environment (staging/prod have
+  # different node counts, and a default instance is not guaranteed to exist
+  # -- see pillar/<env>/servers/init.sls's mcp_default_db flag and
+  # pillar/base/mariadb-mcp's max_mcp_server cap, both in the salt repo), so
+  # real service blocks live in the generated docker-compose.mariadb-mcp.
+  # <env>.yml (ci/generate_mariadb_mcp_compose.py in the salt repo, committed
+  # here and CI-verified not to have drifted from current pillar), each
+  # `extends:`ing this one and setting only container_name/env_file/ports.
+  # docker-compose.mariadb-mcp.dev.yml is the hand-maintained equivalent for
+  # local dev, which has no Salt to generate one.
+  #
+  # Exists only as an `extends:` target -- every real invocation always passes
+  # both `-f docker-compose.yml` and an env's `-f docker-compose.mariadb-mcp.
+  # <env>.yml`, so this is never started on its own in practice. It has no
+  # `profiles:` guard: this Compose version (verified empirically) drops the
+  # whole `extends:` chain -- silently, no error -- for any service that
+  # extends a profile-gated target not in the active profile set, which broke
+  # every real instance rather than just excluding this template. A bare
+  # `docker compose up` with no service names DOES start this (verified) since
+  # nothing marks it inactive -- it immediately fails with no env_file (no
+  # DB_HOST/DB_PASSWORD), so `restart: "no"` overrides the anchor's
+  # `unless-stopped` here specifically: it exits once and stays Exited rather
+  # than cycling Restarting forever in `docker compose ps`.
+  #
+  # Every mariadb-mcp container listens on 9001 INSIDE the container --
+  # build/Dockerfile.mariadb-mcp's ENTRYPOINT hardcodes --port 9001, it isn't
+  # configurable per-instance. Only the published HOST port varies per
+  # instance (see whichever docker-compose.mariadb-mcp.*.yml is in play).
+  mariadb-mcp-base:
+    <<: *mariadb-mcp-base
+    restart: "no"
+
+  # Dev only. Staging and prod are served by the HOST nginx that salt manages
+  # (salt/hydra-headless-ts -> /etc/nginx/conf.d/hydra.conf); this service exists
+  # so the auth_request gate, the CORS fragments and the .well-known documents can
+  # be exercised locally instead of only on a deployed instance.
+  #
+  # Every mount is an env var so pointing this at a salt-rendered host tree later
+  # is one line per mount -- see build/nginx/README.md for the table. The one
+  # exception is NGINX_MAIN_CONF: salt's nginx.conf load_module's njs, which this
+  # image does not ship.
+  #
+  # nginx resolves `upstream ... server <name>` at CONFIG LOAD, so if a backend is
+  # down nginx refuses to start with "host not found in upstream" rather than
+  # failing per-request. restart: unless-stopped retries until they exist.
+  nginx:
+    image: nginx:alpine
+    container_name: hydra-nginx
     ports:
-      - "9001:9001"
+      - "8888:8888"
+    profiles:
+      - dev
     volumes:
-      - /var/log/bondlink:/var/log/bondlink
-      - /etc/hydra-headless-ts:/etc/hydra-headless-ts:ro
+      # conf.d is mounted as a DIRECTORY on purpose: it shadows the stock image's
+      # conf.d/default.conf, which would otherwise also bind a server on :80.
+      - ${NGINX_CONF_DIR:-./build/nginx/dev/conf.d}:/etc/nginx/conf.d:ro
+      - ${NGINX_MAIN_CONF:-./build/nginx/nginx.conf}:/etc/nginx/nginx.conf:ro
+      # Individual files, not a directory: mounting over /etc/nginx would hide
+      # mime.types, fastcgi_params and friends that ship in the image.
+      - ${NGINX_ETC_DIR:-./build/nginx/shared}/cors_headers:/etc/nginx/cors_headers:ro
+      - ${NGINX_ETC_DIR:-./build/nginx/shared}/options_request:/etc/nginx/options_request:ro
+      - ${NGINX_WWW_DIR:-./build/nginx/www}:/var/www/html:ro
+    # No /var/log/nginx mount: the image symlinks access.log -> /dev/stdout and
+    # error.log -> /dev/stderr, and bind-mounting over them loses
+    # `docker compose logs nginx`, which is the whole local debugging surface.
+    depends_on:
+      - hydra
+      - headless-ts
+      # mariadb-mcp instance names vary per environment/fragment (see
+      # mariadb-mcp-base's comment above), so they aren't listed here --
+      # docker-compose.mariadb-mcp.dev.yml adds its own depends_on entries
+      # for this same `nginx` service, which Compose merges (does not
+      # replace) with this list when both files are passed to `-f`.
+    networks:
+      - hydra-net
     restart: unless-stopped
 networks:
   hydra-net:
     driver: bridge
+
+# Build-time only, consumed by build/Dockerfile.headless-ts's `--mount=type=secret`.
+# build/rebuild.sh generates the script from $GIT_TOKEN and exports the path.
+# Defaults to /dev/null so `compose up`/`compose config` still resolve for the
+# services that never build headless-ts; a build that reaches the clone without
+# a real script fails with a plain git auth error rather than something cryptic.
+secrets:
+  github_askpass:
+    file: ${GIT_ASKPASS_FILE:-/dev/null}

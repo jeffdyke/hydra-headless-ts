@@ -62,13 +62,32 @@ export const processAuthCodeGrant = (
     // Step 4: Generate JTI for this access token
     const jti = yield* jwt.generateJti()
 
+    // Step 4.5: Re-validate email from Google ID token before issuing any token
+    // (defense-in-depth — callback.ts already checked, but this catches any edge case
+    // where an auth code was stored without a valid email check)
+    const idTokenForGrant = authData.google_tokens.tokens.id_token
+    if (idTokenForGrant) {
+      const idPayload = decodeJwt(idTokenForGrant)
+      const email = typeof idPayload['email'] === 'string' ? idPayload['email'] : undefined
+      if (!email || !isEmailAllowed(email)) {
+        yield* Effect.logWarning('Blocked unauthorized email at auth code grant').pipe(
+          Effect.annotateLogs({ email: email ?? '<missing>' })
+        )
+        return yield* Effect.fail(new UnauthorizedEmail({ email: email ?? '<missing>' }))
+      }
+    }
+
     // Step 5: Store Google's tokens in Redis (indexed by JTI)
+    // Use the originally-requested scope from the PKCE state (e.g. "openid profile email offline_access")
+    // rather than Google's URL-format scope (e.g. "https://www.googleapis.com/auth/...").
+    // The client (Claude.ai) validates that the returned scope matches what it requested.
     const tokenObj = authData.google_tokens.tokens
+    const grantedScope = pkceState.scope
     const googleTokenData: GoogleTokenData = {
       google_access_token: tokenObj.access_token,
       google_refresh_token: tokenObj.refresh_token ?? '',
       google_id_token: tokenObj.id_token,
-      scope: tokenObj.scope,
+      scope: grantedScope,
       subject: authData.subject ?? 'user',
       client_id: pkceState.client_id,
       expires_at: Date.now() + (tokenObj.expires_in * 1000),
@@ -88,7 +107,7 @@ export const processAuthCodeGrant = (
     yield* redisOps.setJWTRefresh(ourRefreshToken, {
       jti,
       client_id: pkceState.client_id,
-      scope: tokenObj.scope,
+      scope: grantedScope,
       subject: googleTokenData.subject,
       created_at: Date.now(),
     })
@@ -113,7 +132,7 @@ export const processAuthCodeGrant = (
       token_type: 'Bearer',
       expires_in: tokenObj.expires_in,
       refresh_token: ourRefreshToken, // Our own refresh token
-      scope: tokenObj.scope,
+      scope: grantedScope,
     }
 
     yield* Effect.logInfo('Returning OAuth2 JWT token response').pipe(
@@ -170,7 +189,7 @@ export const processRefreshTokenGrant = (
       const idPayload = decodeJwt(googleTokenData.google_id_token)
       const email = typeof idPayload['email'] === 'string' ? idPayload['email'] : undefined
       if (!email || !isEmailAllowed(email)) {
-        yield* Effect.logWarn('Blocked unauthorized email at token refresh').pipe(
+        yield* Effect.logWarning('Blocked unauthorized email at token refresh').pipe(
           Effect.annotateLogs({ email: email ?? '<missing>', jti: jwtRefreshData.jti })
         )
         return yield* Effect.fail(new UnauthorizedEmail({ email: email ?? '<missing>' }))

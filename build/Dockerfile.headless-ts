@@ -1,21 +1,39 @@
-FROM node:23-alpine3.20
+# Runtime image: clones this repo at $GIT_BRANCH and builds it.
+#
+# Auth is a GIT_ASKPASS script supplied as a BuildKit secret, not a build-arg.
+# The previous `https://$GIT_TOKEN@github.com/...` form had two problems: no
+# `ARG GIT_TOKEN` was ever declared, so it expanded to the empty string and the
+# private clone could only ever fail; and had it been declared, a build-arg is
+# recorded verbatim in `docker history`, publishing the token to anyone who can
+# pull the image. A secret is mounted only for the RUN that declares it and is
+# never persisted in a layer. See build/rebuild.sh, which writes the script, and
+# docker-compose.yml's `secrets:` block, which passes it through.
+#
+# node:22-alpine (floating) rather than the frozen node:22-alpine3.20: 3.20
+# still ships an OpenSSL with a CRITICAL CVE and a Node too old for the npm that
+# fixes CVE-2026-59873. Matches the drone-hydra-headless-ts CI base, so tests
+# run on the same Node that serves.
+FROM node:22-alpine
 
-ARG ENV_FILE_PREFIX="staging"
-ENV ENV_SUBCOMMAND="${ENV_FILE_PREFIX}"
-ARG BRANCH_NAME="RC"
-RUN mkdir -p /usr/src/app
-
-WORKDIR /usr/src/app
+WORKDIR /src/app
+ARG GIT_BRANCH=RC
 RUN apk add --no-cache vim git bash postgresql-client
 
-RUN git clone --branch ${BRANCH_NAME} --single-branch https://github.com/jeffdyke/hydra-headless-ts.git /tmp/repo \
-    && cp -rf /tmp/repo/* /usr/src/app \
-    && npm install \
-    && npm run build \
-    && rm -rf /tmp/repo
+# mode=0555: GIT_ASKPASS must be an executable git can invoke, not a data file.
+RUN --mount=type=secret,id=github_askpass,target=/run/secrets/askpass.sh,mode=0555 <<'CLONE'
+set -e
+export GIT_ASKPASS=/run/secrets/askpass.sh GIT_TERMINAL_PROMPT=0
+git clone --depth 1 --branch "$GIT_BRANCH" https://github.com/mblink/hydra-headless-ts.git .
+CLONE
+
+RUN npm install \
+  && npm run build
+
+COPY build/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 VOLUME [ "/var/log/hydra-headless-ts", "/etc/hydra-headless-ts" ]
 
-ENTRYPOINT ["npm", "run", "serve:staging"]
+ENTRYPOINT ["/entrypoint.sh"]
 
 EXPOSE 3000

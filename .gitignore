@@ -8,3 +8,9 @@ dist/
 google.json
 package-lock.json
 .DS_Store
+
+# Scratch files that hold a live bearer token. A Google ID token is a real
+# credential for the signed-in account; short-lived, but git history is not.
+scripts/token.sh
+*.token
+token.txt

@@ -1,0 +1,9 @@
+# Copy of /src/salt/salt/nginx-frontend/etc/nginx/hydra_cors_headers, which salt
+# installs to /etc/nginx/cors_headers on staging and prod. Kept here so the dev
+# container has the same file; set NGINX_ETC_DIR=/etc/nginx to use salt's copy
+# instead. If you change one, change both -- scripts/check-nginx-drift.sh does
+# not cover these fragments.
+add_header 'Access-Control-Allow-Origin' "$http_origin";
+add_header 'Vary' 'Origin';
+add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+add_header 'Access-Control-Allow-Headers' 'Cache-Control,Content-Type,Csrf-Token,DNT,If-Modified-Since,Range,User-Agent,X-Requested-With,Mcp-Protocol-Version,Authorization,Host,Mcp-Session-Id,x-custom-auth-headers';

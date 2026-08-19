@@ -1,0 +1,116 @@
+workspace:
+  base: /src
+  path: hydra-headless-ts
+
+trigger:
+  branch:
+    - RC
+
+kind: pipeline
+name: default
+
+volumes:
+  - name: docker
+    host:
+      path: /var/run/docker.sock
+  - name: cache
+    host:
+      path: /var/lib/drone/cache
+  # The bldeploy PAT the runtime image build needs to clone this private repo.
+  # Scoped to .github rather than all of /var/bondlink/tmp (which is what
+  # oddjob's .drone.yml mounts) -- build/rebuild.sh reads exactly one file under
+  # it -- and attached only to the step that actually builds.
+  # Slated to become a Drone secret; this is the interim host bind.
+  - name: bldeploy-pat
+    host:
+      path: /var/bondlink/tmp/.github
+
+# Every step declares depends_on. Drone treats the pipeline as a graph as soon
+# as any step uses it, and steps that omit it become unordered -- which is how
+# `notify` previously raced the build instead of reporting on it.
+steps:
+  - name: init-build
+    image: ruby:3-alpine
+    volumes:
+      - &docker-cache { "name": "cache", path: "/cache" }
+    commands:
+      - |
+        echo "Drone agent: $DRONE_AGENT_NAME"
+        echo "Drone Build Number: $DRONE_BUILD_NUMBER"
+        echo $DRONE_BUILD_NUMBER > /cache/build.txt
+    environment: &ci
+      CI: true
+
+  # Separate step because it is the only image holding ECR credentials; the
+  # steps below then run `pull: never` against the tag it just fetched.
+  - name: pull-images
+    image: jeffdyke/ecr-auth-v2:stable
+    volumes:
+      - &docker-volume { "name": "docker", path: "/var/run/docker.sock" }
+    commands:
+      - docker pull 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
+    depends_on:
+      - init-build
+
+  # `npm run ci` == npm-run-all clean lint _tsc test. No install step precedes
+  # it: drone-hydra-headless-ts now ships this repo's dependency tree at
+  # /node_modules, which Node resolves by walking up from the workspace. The old
+  # command, `npm run test:ci`, names a script package.json has never defined --
+  # it has `test` and `ci`.
+  - name: run-tests
+    image: &build-image 668874212870.dkr.ecr.us-east-1.amazonaws.com/drone-hydra-headless-ts:latest
+    pull: never
+    environment: *ci
+    commands:
+      - npm run ci
+    depends_on:
+      - pull-images
+
+  # Builds the runtime image (build/Dockerfile.headless-ts, via compose) and
+  # pushes it to ECR under a build hash.
+  #
+  # This absorbs the former `base-install` step, which ran the very same
+  # `rebuild.sh --ci` -- so the image was built and pushed twice per pipeline --
+  # and which mounted no docker volume, leaving it unable to reach the daemon it
+  # needed at all.
+  #
+  # Plain relative path: the old `${PWD}/build/rebuild.sh` was interpolated by
+  # Drone from *its* variables, not the shell's, and PWD is not one of them, so
+  # it expanded to an empty string and invoked `/build/rebuild.sh`.
+  - name: build-and-push
+    image: *build-image
+    pull: never
+    volumes:
+      - *docker-volume
+      - { "name": "bldeploy-pat", path: "/var/bondlink/tmp/.github" }
+    environment: *ci
+    commands:
+      # docker-cli-compose alone is the classic (non-BuildKit) builder, which
+      # can't do the GIT_ASKPASS secrets:-mount build/rebuild.sh relies on to
+      # keep the clone PAT out of `docker history` ("the classic builder
+      # doesn't support secrets, set DOCKER_BUILDKIT=1 to use BuildKit").
+      # docker-cli-buildx supplies that; compose detects and uses it
+      # automatically once it's on the plugin path.
+      - apk add docker-cli-compose docker-cli-buildx
+      - bash build/rebuild.sh --ci
+    depends_on:
+      - run-tests
+
+  - name: notify
+    image: drillster/drone-email:latest
+    pull: always
+    environment:
+      PLUGIN_HOST: prodsalt.bondlink.vpc
+      PLUGIN_PORT: '25'
+      PLUGIN_FROM: bldeploy@bondlink.com
+    commands:
+      - |
+        if [ -z "$DRONE_COMMIT_AUTHOR_EMAIL" ]; then
+          apk add --no-cache --update git
+          export DRONE_COMMIT_AUTHOR_EMAIL="$(git show -s --format='%aE' HEAD)"
+        fi
+      - /bin/drone-email
+    depends_on:
+      - build-and-push
+    when:
+      status: [changed, failure]
