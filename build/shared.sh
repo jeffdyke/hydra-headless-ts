@@ -2,6 +2,11 @@
 export REPO_BASE="668874212870.dkr.ecr.us-east-1.amazonaws.com"
 export COMPOSE_FILE="/src/hydra-headless-ts/docker-compose.yml"
 export ECR_REPO="bondlink-hydra-headless-ts"
+if [ "$(uname)" = "Darwin" ]; then
+  DOCKER_CMD="docker"
+else
+  DOCKER_CMD="sudo docker"
+fi
 # True when ~/.docker/config.json maps $1 to the amazon-ecr-credential-helper.
 # Deliberately grep rather than jq: this runs inside minimal CI containers too.
 ecr_cred_helper_configured() {
