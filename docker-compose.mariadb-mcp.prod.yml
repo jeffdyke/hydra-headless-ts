@@ -14,29 +14,29 @@ services:
     ports:
       - "9001:9001"
 
-  mariadb-mcp-proddb01:
+  mariadb-mcp-proddb04:
     extends:
       file: docker-compose.yml
       service: mariadb-mcp-base
-    container_name: mariadb-mcp-proddb01
-    env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb01.env
+    container_name: mariadb-mcp-proddb04
+    env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb04.env
     ports:
       - "9010:9001"
 
-  mariadb-mcp-proddb02:
+  mariadb-mcp-proddb05:
     extends:
       file: docker-compose.yml
       service: mariadb-mcp-base
-    container_name: mariadb-mcp-proddb02
-    env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb02.env
+    container_name: mariadb-mcp-proddb05
+    env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb05.env
     ports:
       - "9011:9001"
 
-  mariadb-mcp-proddb03:
+  mariadb-mcp-proddb06:
     extends:
       file: docker-compose.yml
       service: mariadb-mcp-base
-    container_name: mariadb-mcp-proddb03
-    env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb03.env
+    container_name: mariadb-mcp-proddb06
+    env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb06.env
     ports:
       - "9012:9001"
