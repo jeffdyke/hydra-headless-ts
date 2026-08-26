@@ -30,7 +30,10 @@ case "${SKIP_GIT_CHECKS:-0}" in 0 | "") ;; *) FORCE=1 ;; esac
 # compose in either order.
 for arg in "$@"; do
   case "$arg" in
-    --ci) IS_CI=1 ;;
+    --ci)
+      IS_CI=1
+      GIT_COMMAND=git
+      ;;
     --force) FORCE=1 ;;
     *)
       echo "error: unknown argument '$arg' (expected --ci and/or --force)" >&2
