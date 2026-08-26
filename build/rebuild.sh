@@ -13,7 +13,11 @@ set -eo pipefail
 # access to mblink/hydra-headless-ts: either GIT_TOKEN in the environment, or a
 # readable file at $PAT_SRC (see below). COMPOSE_FILE/REPO_BASE/ECR_REPO and
 # login() all come from build/shared.sh.
-
+if [ $(uname) = "Darwin" ]; then
+  export GIT_COMMAND=git
+else
+  export GIT_COMMAND="sudo -u bldeploy git"
+fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "${SCRIPT_DIR}/shared.sh"
 ONLY_ARCH=
@@ -57,7 +61,7 @@ fi
 # "app" tag contained the CI toolchain instead of the built app.
 PUSH_IMAGE="${REPO_BASE}/${ECR_REPO}"
 BUILD_DATE=$(date -u +"%Y%m%dT%H%M%S")
-GIT_COMMIT=$(git rev-parse --short HEAD)
+GIT_COMMIT=$($GIT_COMMAND rev-parse --short HEAD)
 BUILD_HASH="${BUILD_DATE}_hydra-headless-ts_${GIT_COMMIT}"
 
 # Which branch the image build clones. An explicit GIT_BRANCH always wins, and
@@ -74,7 +78,7 @@ if [ -z "${GIT_BRANCH:-}" ] && [ -z "${DRONE_BRANCH:-}" ] && [ $IS_CI -eq 0 ]; t
   # `|| true` and the explicit if: under `set -e` a non-zero last command in an
   # if-body aborts the script, and both of these fail routinely (not a git repo,
   # branch is not detached).
-  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+  current_branch=$($GIT_COMMAND rev-parse --abbrev-ref HEAD 2>/dev/null || true)
   if [ "$current_branch" = "HEAD" ]; then
     current_branch=
   fi
@@ -102,10 +106,10 @@ echo "Building from branch: ${GIT_BRANCH} (${GIT_COMMIT})"
 # scratch, and blocking on them just trains everyone to reach for --force.
 check_git_state() {
   local remote_sha local_sha untracked
-  local_sha=$(git rev-parse HEAD)
+  local_sha=$($GIT_COMMAND rev-parse HEAD)
   # GIT_TERMINAL_PROMPT=0 so a missing credential fails here instead of hanging
   # on a prompt nobody is watching.
-  remote_sha=$(GIT_TERMINAL_PROMPT=0 git ls-remote origin "refs/heads/${GIT_BRANCH}" 2>/dev/null | cut -f1)
+  remote_sha=$(GIT_TERMINAL_PROMPT=0 $GIT_COMMAND ls-remote origin "refs/heads/${GIT_BRANCH}" 2>/dev/null | cut -f1)
 
   if [ -z "$remote_sha" ]; then
     echo "error: branch '${GIT_BRANCH}' is not on origin (or origin is unreachable)." >&2
@@ -120,15 +124,15 @@ check_git_state() {
     echo "       Push your commits, or re-run with --force." >&2
     return 1
   fi
-  if ! git diff --quiet || ! git diff --cached --quiet; then
+  if ! $GIT_COMMAND diff --quiet || ! $GIT_COMMAND diff --cached --quiet; then
     echo "error: uncommitted changes to tracked files:" >&2
-    git --no-pager diff --stat HEAD >&2
+    $GIT_COMMAND --no-pager diff --stat HEAD >&2
     echo "       These are not on origin/${GIT_BRANCH}, so they will not be in the" >&2
     echo "       image. Commit and push, or re-run with --force." >&2
     return 1
   fi
 
-  untracked=$(git ls-files --others --exclude-standard)
+  untracked=$($GIT_COMMAND ls-files --others --exclude-standard)
   if [ -n "$untracked" ]; then
     echo "warning: untracked files present; they will not be in the image:" >&2
     echo "$untracked" | sed 's/^/         /' >&2

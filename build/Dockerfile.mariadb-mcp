@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 ARG GIT_OWNER=jleider
-ARG GIT_BRANCH="updates/logging"
+ARG GIT_BRANCH="main"
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
