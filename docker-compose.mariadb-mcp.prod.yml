@@ -40,3 +40,11 @@ services:
     env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb06.env
     ports:
       - "9012:9001"
+  mariadb-mcp-proddb04-review:
+    extends:
+      file: docker-compose.yml
+      service: mariadb-mcp-base
+    container_name: mariadb-mcp-proddb04-review
+    env_file: /etc/hydra-headless-ts/mariadb-mcp-proddb04-review.env
+    ports:
+      - "9013:9001"
