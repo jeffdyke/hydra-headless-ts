@@ -9,8 +9,7 @@ This is about the **live path**, not the unit tests. For those see
 Note: bare `/db-tools` (the default mariadb-mcp instance) is not behind an
 nginx `auth_request` gate. Every *named* instance — one per servers-pillar
 node flagged `mcp_auth_db: true` on real infra, reached at `/db-tools/<name>`
-— IS gated the same way dbhub's `/db-compare` used to be, since it replaced
-that capability. This repo carries one dev-testable named instance,
+— IS gated. This repo carries one dev-testable named instance,
 `mariadb-mcp-example` (port 9010), as the template for adding more; see
 docker-compose.yml's `mariadb-mcp-base` service and
 docker-compose.mariadb-mcp.dev.yml.
