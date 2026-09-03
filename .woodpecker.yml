@@ -1,6 +1,6 @@
-# Woodpecker CI (arm64) — runs ALONGSIDE Drone (.drone.yml, amd64) during the
-# migration. Same steps, pinned to arm64 agents via `labels` and pulling the
-# arch-suffixed CI image (drone-hydra-headless-ts:latest-arm64).
+# Woodpecker CI (arm64) — the only CI now that .drone.yml (amd64) is gone.
+# Pinned to arm64 agents via `labels` and pulling the arch-suffixed CI image
+# (drone-hydra-headless-ts:latest-arm64).
 #
 # There is no ECR-auth sidecar step: the agent host holds the registry
 # credentials, so the build steps just pull their own image.

@@ -10,7 +10,11 @@ volumes:
 # networks/restart per instance. Each instance service only needs to set
 # container_name, env_file and ports.
 x-mariadb-mcp: &mariadb-mcp-base
-  image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest
+  # :latest is oddjob/drone/build.sh's amd64 tag (no arch suffix, by that
+  # script's own convention) and has not been pushed since the amd64 fleet
+  # migration completed -- :latest-arm64 is the tag its arm64-only pipeline
+  # actually keeps current now that the build above is arm64-only too.
+  image: 668874212870.dkr.ecr.us-east-1.amazonaws.com/bondlink-mariadb-mcp:latest-arm64
   build:
     context: .
     dockerfile: build/Dockerfile.mariadb-mcp
@@ -116,12 +120,16 @@ services:
   # different node counts, and a default instance is not guaranteed to exist
   # -- see pillar/<env>/servers/init.sls's mcp_default_db flag and
   # pillar/base/mariadb-mcp's max_mcp_server cap, both in the salt repo), so
-  # real service blocks live in the generated docker-compose.mariadb-mcp.
-  # <env>.yml (ci/generate_mariadb_mcp_compose.py in the salt repo, committed
-  # here and CI-verified not to have drifted from current pillar), each
+  # real service blocks live in a docker-compose.mariadb-mcp.<env>.yml, each
   # `extends:`ing this one and setting only container_name/env_file/ports.
-  # docker-compose.mariadb-mcp.dev.yml is the hand-maintained equivalent for
-  # local dev, which has no Salt to generate one.
+  # For staging/prod that file is rendered directly onto the minion by
+  # salt/hydra-headless-ts/init.sls (salt repo), at /etc/hydra-headless-ts/
+  # docker-compose.mariadb-mcp.<env>.yml -- nothing here commits or checks a
+  # copy of it; ci/generate_mariadb_mcp_compose.py (salt repo) previews the
+  # same shape from static pillar for when there's no live minion to render
+  # against, and `sudo /etc/init.d/hydra-mcp start` on the minion is what
+  # starts the rendered stack. docker-compose.mariadb-mcp.dev.yml is the
+  # hand-maintained equivalent for local dev, which has no Salt to render one.
   #
   # Exists only as an `extends:` target -- every real invocation always passes
   # both `-f docker-compose.yml` and an env's `-f docker-compose.mariadb-mcp.
