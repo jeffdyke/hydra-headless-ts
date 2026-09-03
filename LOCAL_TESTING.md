@@ -198,11 +198,12 @@ service to docker-compose.mariadb-mcp.dev.yml (`extends: {file:
 docker-compose.yml, service: mariadb-mcp-base}`), then a matching location in
 the dev nginx conf. On real infra there's no picking involved: a node's port
 comes from its `mcp_port` in pillar/<env>/servers/init.sls, and
-ci/generate_mariadb_mcp_compose.py (salt repo) plus salt/hydra-headless-ts's
-`get_mcp_auth_db()`-driven backend_mappings render the matching compose
-fragment and nginx routing directly from that pillar -- see
-docker-compose.mariadb-mcp.staging.yml / .prod.yml, both CI-verified not to
-drift from it.
+salt/hydra-headless-ts's `get_mcp_default_db()`/`get_mcp_auth_db()`-driven
+render (salt repo) writes the matching compose fragment directly to
+/etc/hydra-headless-ts/docker-compose.mariadb-mcp.<env>.yml on the minion, and
+the same pillar drives its `backend_mappings`-based nginx routing --
+ci/generate_mariadb_mcp_compose.py (salt repo) previews the compose fragment's
+shape from static pillar when there's no live minion to render against.
 
 The backend ports are published for isolation testing. Narrowing them to
 `127.0.0.1:` is worth doing if that bothers you — `--direct-mcp` still works.

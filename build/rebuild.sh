@@ -44,12 +44,14 @@ done
 
 if [ $IS_CI -eq 1 ]; then
   hydra_running=
+  # CI is arm64-only (.drone.yml/amd64 is gone; .woodpecker.yml only runs
+  # linux/arm64 agents) -- fail loudly rather than silently building the
+  # wrong platform if that ever changes.
   arch=$(uname -m)
   case "$arch" in
-    x86_64) ONLY_ARCH=linux/amd64 ;;
     aarch64) ONLY_ARCH=linux/arm64 ;;
     *)
-      echo "error: unrecognized architecture '$arch'" >&2
+      echo "error: CI is arm64-only; unexpected architecture '$arch'" >&2
       exit 1
       ;;
   esac
@@ -184,16 +186,8 @@ export GIT_ASKPASS_FILE
 set -x
 if [ -n "$hydra_running" ]; then
   docker stop hydra-headless-ts-1
-  # No -a. `prune -a` removes every image not used by a RUNNING container, which
-  # took out the binfmt/QEMU emulator images along with everything else -- and
+  # No -a: `prune -a` removes every image not used by a RUNNING container, and
   # this script had just stopped the one container keeping some of them alive.
-  # The next multi-arch build then died on the amd64 stage with
-  #   exec /bin/sh: exec format error
-  # which reads like a broken Dockerfile rather than missing emulation, and
-  # `docker buildx ls` keeps advertising linux/amd64 throughout because it lists
-  # configured platforms, not executable ones. Recovering needs
-  #   docker run --privileged --rm tonistiigi/binfmt --install amd64
-  #
   # Plain prune drops dangling (untagged) layers only, which is all this was
   # ever for -- reclaiming space from the previous build of this image. It also
   # keeps the base images, so rebuilds stop re-pulling node:22-alpine every time.
@@ -202,19 +196,7 @@ fi
 
 echo "Docker $(which docker) version: $(docker --version)"
 export DOCKER_DEFAULT_PLATFORM=$ONLY_ARCH
-
-# docker-compose.yml's build.platforms lists both amd64 and arm64 for desktop
-# use, where buildx makes a multi-platform build just work. CI agents carry
-# only the classic `docker-cli-compose` plugin (no buildx) and fail outright on
-# a multi-entry platforms list ("the classic builder doesn't support
-# multi-arch build"). In CI, layer on the single-arch override that matches
-# this host -- see docker-compose.ci-amd64.yml for how it replaces rather than
-# appends to the base list.
-COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
-if [ $IS_CI -eq 1 ]; then
-  COMPOSE_ARGS+=(-f "$(dirname "${COMPOSE_FILE}")/docker-compose.ci-${ONLY_ARCH#linux/}.yml")
-fi
-docker compose "${COMPOSE_ARGS[@]}" build headless-ts
+docker compose -f "${COMPOSE_FILE}" build headless-ts
 
 # Only outside CI. The `sudo docker compose up` that used to sit below this
 # block was unguarded and duplicated it, so every CI run also tried to start a
@@ -229,9 +211,21 @@ fi
 # nothing called it.
 login
 # docker-compose.yml's build block declares `platforms:`, so :latest in the
-# local store is a multi-platform index. `docker tag` carries the whole index
-# over, and `docker push` without --platform uploads every manifest in it, so
-# amd64 and arm64 both land under ${BUILD_HASH} from one run on either arch.
+# local store is an image index (one platform: linux/arm64). `docker tag`
+# carries the index over, and `docker push` without --platform uploads
+# everything in it.
 docker tag "${PUSH_IMAGE}":latest "${PUSH_IMAGE}":"${BUILD_HASH}"
 docker push "${PUSH_IMAGE}":"${BUILD_HASH}"
 echo "Build and push complete: ${PUSH_IMAGE}:${BUILD_HASH}"
+
+# Only in CI: docker-compose.yml's headless-ts service pulls this image with no
+# tag (implicitly :latest), and nothing else here ever refreshes that tag -- a
+# local rebuild pushing it would let one developer's laptop build become what
+# everyone else deploys. .drone.yml (amd64) is gone and .woodpecker.yml only
+# runs on arm64 agents, so there is exactly one arch to keep this tag pointed
+# at; no arch suffix needed the way oddjob's build.sh uses one (that script
+# still tags both amd64 and arm64 builds from the same pipeline).
+if [ $IS_CI -eq 1 ]; then
+  docker push "${PUSH_IMAGE}":latest
+  echo "Build and push complete: ${PUSH_IMAGE}:latest"
+fi

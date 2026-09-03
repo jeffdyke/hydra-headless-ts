@@ -1,8 +1,0 @@
-# CI-only override: restricts headless-ts to a single build platform.
-# See docker-compose.ci-amd64.yml for the full explanation -- this is the
-# arm64 counterpart, selected by build/rebuild.sh on arm64 CI agents.
-services:
-  headless-ts:
-    build:
-      platforms: !override
-        - linux/arm64
