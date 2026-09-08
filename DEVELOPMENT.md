@@ -205,6 +205,14 @@ npm run serve:staging    # Staging
 npm run serve:production # Production
 ```
 
+> **Follow-up/cleanup TODO:** `serve:staging`/`serve:production` set
+> `NODE_ENV='--env-file=/etc/hydra-headless-ts/hydra.env'` — that's a stray
+> flag string assigned to the wrong variable, not a real mechanism for
+> loading the file. It's currently harmless: `docker-compose.yml` already
+> injects `hydra.env` via its own `env_file:` directive, so the container's
+> process env is correct regardless. But it's confusing to read and worth
+> removing in a small follow-up PR rather than leaving it to look load-bearing.
+
 ## Effect Patterns
 
 The codebase uses Effect for functional programming:
