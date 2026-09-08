@@ -17,7 +17,16 @@ mistake doesn't cost another debugging session.
 - **Edited `env_file` contents don't take effect.** `docker compose restart`
   reuses the existing container's already-baked environment; it does not
   re-read `env_file:`. Use `docker compose up -d --force-recreate --no-deps
-  <service>` instead.
+  <service>` instead. This applies just as hard to a container that's
+  currently crash-looping on its own (`restart: unless-stopped`): waiting for
+  the automatic restart to pick up a fix does nothing — it's still restarting
+  with whatever env was baked in at last `up`. On staging/prod, remember
+  `env_file` (`/etc/hydra-headless-ts/hydra.env`) is itself rendered by Salt
+  from pillar — an edit isn't even "on disk" until someone runs, on the
+  target env's salt master, `cd /src/salt && blgit pull` (or checks out the
+  branch with the edit) then `sudo salt <minion> state.sls hydra-headless-ts`.
+  So there are two separate propagation steps to verify, not one: pillar →
+  rendered `hydra.env`, then rendered `hydra.env` → running container.
 
 - **A container that should be gone is still running after regenerating a
   compose file.** If a service was renamed/removed (e.g.
@@ -30,6 +39,18 @@ mistake doesn't cost another debugging session.
   compose up`, not just that one service. Confirm the file exists at the exact
   path the new service name expects before recreating.
 
+- **A bare `docker compose <cmd>` on a deployed host silently talks to the
+  wrong project.** Staging/prod run project `hydra-mcp` via two `-f` files
+  (`docker-compose.yml` + `/etc/hydra-headless-ts/docker-compose.mariadb-mcp.
+  <env>.yml`), managed by `/etc/init.d/hydra-mcp` — not project `hydra` from
+  `docker-compose.yml`'s own `name:`. Always pass both `-f` files and
+  `-p hydra-mcp` explicitly. Scripts under `scripts/` and `build/` source
+  `scripts/compose-env.sh`, which auto-detects this (deployed host vs. local
+  dev checkout) and exports `COMPOSE_ARGS`/`DOCKER_CMD`/`compose()` — source
+  it instead of re-deriving the flags in any new script. It does not help
+  ad-hoc commands typed by hand; those still need the flags spelled out (see
+  the diagnostic commands throughout this doc for the exact invocation).
+
 ## OAuth client configuration (Hydra + Google)
 
 - **Two unrelated "client" concepts, easy to conflate:** `AUTH_FLOW_CLIENT_ID`
@@ -39,9 +60,13 @@ mistake doesn't cost another debugging session.
   connector's "client ID" field wants `AUTH_FLOW_CLIENT_ID`.
 
 - **A registration helper's printed instructions don't match where the app
-  actually reads config.** `scripts/dev-register-client.sh` prints
-  `/etc/hydra-headless-ts/local.env` — that's dev-only wording; staging only
-  loads `/etc/hydra-headless-ts/hydra.env` (`docker-compose.yml`'s `env_file`).
+  actually reads config.** `scripts/dev-register-client.sh` now detects this
+  and prints the right target: on a deployed host, `AUTH_FLOW_CLIENT_ID` in
+  `hydra.env` comes from Salt pillar (`pillar/<env>/oauth/init.sls`'s
+  `dcr_client_id`, rendered by `env.tmpl.jinja2`), not any local file —
+  registering a new client means updating that pillar key and applying it
+  (see the `env_file` bullet above for the apply steps), not editing
+  `/etc/hydra-headless-ts/local.env` (dev-only, and inert on staging/prod).
   Same trap for the CLI: plain `npm run cli` hardcodes
   `--env-file=./src/env/local.env`; use `cli:env` (no override, relies on real
   process env) when operating against staging/prod.
@@ -73,6 +98,18 @@ mistake doesn't cost another debugging session.
   older Node — almost always the bare host's system Node rather than inside
   the container. Run CLI commands via `docker exec`/`docker compose exec`.
 
+- **`hydra list clients` shows a huge number of near-identical clients.**
+  This is crash-loop damage — see `AUTH_FLOW.md`'s `ensureClient` note: every
+  restart with a bad `AUTH_FLOW_CLIENT_ID` mints one more. They all match the
+  same exact shape: `grant_types: authorization_code,refresh_token`;
+  `response_types: code`; `redirect_uris:
+  https://oauth.<env>.bondlink.org/callback, https://claude.ai/api/mcp/auth_callback`;
+  `client_name: hydra-headless`. Cleanup: paginate `hydra list clients`
+  (`IS LAST PAGE` in the output tells you when to stop) and delete every
+  client matching that exact shape, carefully excluding the currently
+  configured `AUTH_FLOW_CLIENT_ID` and any other intentionally-registered
+  client.
+
 ## nginx / HAProxy
 
 - **A config value was fixed on disk but the old behavior persists.** Both
@@ -100,7 +137,20 @@ mistake doesn't cost another debugging session.
   service (port `9001:9001`), not just the named instances. This is generated
   by `ci/generate_mariadb_mcp_compose.py` in the salt repo from
   `mcp_auth_db`/`mcp_default_db` pillar flags — regenerate and diff if a
-  default is missing.
+  default is missing. Even when the file does define it, a scoped
+  `up -d <service>` (e.g. recreating just `headless-ts` to pick up an env
+  change) won't start it — Compose only touches the service(s) you name, it
+  never reconciles the rest of the project. Don't rely on a single-service
+  recreate command surviving in shell history for next time; the safe,
+  reproducible recovery command is the full-stack recreate (all `-f` files,
+  no service name, so it starts/recreates everything the project defines and
+  removes anything stale):
+  ```
+  sudo docker compose -f /src/hydra-headless-ts/docker-compose.yml -f /etc/hydra-headless-ts/docker-compose.mariadb-mcp.<env>.yml -p hydra-mcp up -d --remove-orphans
+  ```
+  Confirm with `ps` afterward that a bare `mariadb-mcp-<env>` (or similar)
+  container is listed alongside the named `mariadb-mcp-<name>` instances, not
+  just the named ones.
 
 - **Claude connector lists no tools / picks the wrong instance.** Configure
   the connector with exactly one resource URL

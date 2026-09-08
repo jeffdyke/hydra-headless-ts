@@ -60,6 +60,20 @@ Notes:
 }
 ```
 
+### Startup client verification (`ensureClient`)
+
+`build/entrypoint.sh` runs `ensureClient()` (`src/authFlow.ts`) on every
+container start to confirm the configured `AUTH_FLOW_CLIENT_ID` still exists
+in Hydra. **On failure it does not just fail** — it first calls Hydra's admin
+API and creates a brand-new throwaway client (`newClient('hydra-headless')`),
+then exits 1. Combined with `restart: unless-stopped`, a stale
+`AUTH_FLOW_CLIENT_ID` turns into a crash loop that mints a new orphaned OAuth2
+client roughly every ~11s, indefinitely, until someone fixes the configured ID
+— see `STAGING_TROUBLESHOOTING.md`'s OAuth section for the cleanup recipe.
+`SKIP_CLIENT_CHECK=1` skips this entire check (including the throwaway-client
+side effect) and should only be a temporary stopgap, never a standing prod
+config.
+
 ## Discovery Endpoints
 
 Claude was configured with https://auth.mycompany.tld

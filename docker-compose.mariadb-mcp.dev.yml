@@ -1,9 +1,10 @@
-# Hand-maintained equivalent of docker-compose.mariadb-mcp.{staging,prod}.yml
-# for local dev, which has no Salt/servers-pillar to generate one from.
-# Carries one default instance (bare /db-tools, ungated) and one named
-# example instance (gated at /db-tools/example) -- the template for adding
-# more locally; see docker-compose.yml's mariadb-mcp-base service. Update
-# nginx's depends_on below to match if you add or rename an instance here.
+# Hand-maintained equivalent of what salt/hydra-headless-ts/init.sls renders
+# directly onto staging/prod (/etc/hydra-headless-ts/docker-compose.mariadb-mcp.
+# <env>.yml, in the salt repo) -- dev has no Salt/servers-pillar/VPC-cache to
+# render one from. Carries one default instance (bare /db-tools, ungated) and
+# one named example instance (gated at /db-tools/example) -- the template for
+# adding more locally; see docker-compose.yml's mariadb-mcp-base service.
+# Update nginx's depends_on below to match if you add or rename an instance here.
 
 services:
 
