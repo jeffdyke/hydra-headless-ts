@@ -29,6 +29,7 @@ else
 fi
 
 if [ -x /etc/init.d/hydra-mcp ]; then
+  DEPLOYED=1
   BASE_COMPOSE="/src/hydra-headless-ts/docker-compose.yml"
   mcp_fragments=(/etc/hydra-headless-ts/docker-compose.mariadb-mcp.*.yml)
   if [ ! -e "${mcp_fragments[0]}" ]; then
@@ -41,10 +42,18 @@ if [ -x /etc/init.d/hydra-mcp ]; then
   fi
   MCP_COMPOSE="${mcp_fragments[0]}"
   COMPOSE_PROJECT="hydra-mcp"
+  # docker-compose.mariadb-mcp.<env>.yml -> <env> (e.g. "prod", "staging"), the
+  # same <env> salt/hydra-headless-ts's init.sls used to render this fragment
+  # and to pick pillar/<env>/oauth's dcr_client_id -- see dev-register-client.sh.
+  mcp_fragment_basename="$(basename "$MCP_COMPOSE")"
+  COMPOSE_ENV="${mcp_fragment_basename#docker-compose.mariadb-mcp.}"
+  COMPOSE_ENV="${COMPOSE_ENV%.yml}"
 else
+  DEPLOYED=0
   BASE_COMPOSE="${REPO_ROOT}/docker-compose.yml"
   MCP_COMPOSE="${REPO_ROOT}/docker-compose.mariadb-mcp.dev.yml"
   COMPOSE_PROJECT="hydra"
+  COMPOSE_ENV="dev"
 fi
 
 COMPOSE_ARGS=(-f "$BASE_COMPOSE" -f "$MCP_COMPOSE" -p "$COMPOSE_PROJECT")
