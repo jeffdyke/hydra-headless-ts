@@ -11,8 +11,15 @@ set -eo pipefail
 #
 # The image build clones this private repo, so it needs a GitHub PAT with read
 # access to mblink/hydra-headless-ts: either GIT_TOKEN in the environment, or a
-# readable file at $PAT_SRC (see below). COMPOSE_FILE/REPO_BASE/ECR_REPO and
-# login() all come from build/shared.sh.
+# readable file at $PAT_SRC (see below). REPO_BASE/ECR_REPO and login() all
+# come from build/shared.sh. COMPOSE_ARGS/COMPOSE_PROJECT (which compose
+# files, and which project, this host is actually running under) come from
+# scripts/compose-env.sh -- see that file's header. Without it, a bare
+# `docker compose -f docker-compose.yml ...` resolves to project "hydra"
+# (the file's own `name:`), a *different* project than the one a deployed
+# host actually runs (`hydra-mcp`, via /etc/init.d/hydra-mcp) -- so this
+# script would stop/recreate nothing, then start a second, conflicting
+# headless-ts container instead of replacing the real one.
 if [ $(uname) = "Darwin" ]; then
   export GIT_COMMAND=git
 else
@@ -20,6 +27,7 @@ else
 fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 source "${SCRIPT_DIR}/shared.sh"
+source "${SCRIPT_DIR}/../scripts/compose-env.sh"
 ONLY_ARCH=
 IS_CI=0
 # Any non-empty, non-zero SKIP_GIT_CHECKS counts as force, so both
@@ -56,7 +64,7 @@ if [ $IS_CI -eq 1 ]; then
       ;;
   esac
 else
-  hydra_running=$(docker ps --filter "name=hydra-headless-ts-1" -q) # Running or restarting, it needs to be stopped
+  hydra_running=$(docker ps --filter "name=${COMPOSE_PROJECT}-headless-ts-1" -q) # Running or restarting, it needs to be stopped
 fi
 
 # PUSH_IMAGE is what docker-compose.yml's headless-ts service declares as its
@@ -185,7 +193,7 @@ chmod 700 "$GIT_ASKPASS_FILE"
 export GIT_ASKPASS_FILE
 set -x
 if [ -n "$hydra_running" ]; then
-  docker stop hydra-headless-ts-1
+  docker stop "$hydra_running"
   # No -a: `prune -a` removes every image not used by a RUNNING container, and
   # this script had just stopped the one container keeping some of them alive.
   # Plain prune drops dangling (untagged) layers only, which is all this was
@@ -196,14 +204,14 @@ fi
 
 echo "Docker $(which docker) version: $(docker --version)"
 export DOCKER_DEFAULT_PLATFORM=$ONLY_ARCH
-docker compose -f "${COMPOSE_FILE}" build headless-ts
+docker compose "${COMPOSE_ARGS[@]}" build headless-ts
 
 # Only outside CI. The `sudo docker compose up` that used to sit below this
 # block was unguarded and duplicated it, so every CI run also tried to start a
 # container on the Drone agent -- under sudo, which the build container has no
 # reason to hold.
 if [ $IS_CI -eq 0 ]; then
-  docker compose -f "${COMPOSE_FILE}" up -d --force-recreate --no-deps headless-ts
+  docker compose "${COMPOSE_ARGS[@]}" up -d --force-recreate --no-deps headless-ts
 fi
 
 # Authenticate to ECR, unless a credential helper already handles it -- see the
