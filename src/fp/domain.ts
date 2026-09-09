@@ -83,6 +83,46 @@ export const AuthFlowCreateClientSchema = Schema.Struct({
 export type AuthFlowCreateClientRequest = typeof AuthFlowCreateClientSchema.Type
 
 /**
+ * Client ID Metadata Document (CIMD)
+ * https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/
+ *
+ * Fetched from the URL that IS the client_id. Field names mirror RFC 7591
+ * client metadata (unlike AuthFlowCreateClientSchema above, which uses the
+ * non-standard `redirect_urls` and is a template for the unrelated master-
+ * client bootstrap flow only).
+ *
+ * Only `token_endpoint_auth_method: 'none'` is accepted — this bridge only
+ * supports public clients authenticating via PKCE, matching the CIMD draft's
+ * primary use case and this app's existing client model.
+ */
+export const CimdMetadataSchema = Schema.Struct({
+  client_id: Schema.optional(Schema.String),
+  client_name: Schema.optional(Schema.String),
+  client_uri: Schema.optional(Schema.String),
+  logo_uri: Schema.optional(Schema.String),
+  redirect_uris: Schema.NonEmptyArray(Schema.String),
+  grant_types: Schema.optional(Schema.Array(Schema.String)),
+  response_types: Schema.optional(Schema.Array(Schema.String)),
+  token_endpoint_auth_method: Schema.optional(Schema.Literal('none')),
+  scope: Schema.optional(Schema.String),
+  contacts: Schema.optional(Schema.Array(Schema.String)),
+  tos_uri: Schema.optional(Schema.String),
+  policy_uri: Schema.optional(Schema.String),
+})
+export type CimdMetadata = typeof CimdMetadataSchema.Type
+
+/**
+ * Cached, previously-validated CIMD document, keyed by client_id URL in
+ * Redis (see fp/services/redis.ts's getCimdMetadata/setCimdMetadata).
+ */
+export const CimdCacheEntrySchema = Schema.Struct({
+  metadata: CimdMetadataSchema,
+  contentHash: Schema.String,
+  fetchedAt: Schema.Number,
+})
+export type CimdCacheEntry = typeof CimdCacheEntrySchema.Type
+
+/**
  * Google Token Response
  */
 export const GoogleTokenResponseSchema = Schema.Struct({

@@ -20,6 +20,7 @@ import { createAuthzRouter } from './routes/authz-fp.js'
 import { createCallbackRouter } from './routes/callback-fp.js'
 import { createConsentRouter } from './routes/consent-fp.js'
 import { createDeviceRouter } from './routes/device.js'
+import { createDiscoveryRouter } from './routes/discovery-fp.js'
 import { createIndexRouter } from './routes/index-fp.js'
 import { createLoginRouter } from './routes/login-fp.js'
 import { createLogoutRouter } from './routes/logout-fp.js'
@@ -125,6 +126,7 @@ app.use('/callback', createCallbackRouter(serviceLayer, googleClient, callbackCo
 app.use('/oauth2', createTokenRouter(serviceLayer))
 app.use('/device', createDeviceRouter(OAuth2ApiLayer))
 app.use('/validate-token', createValidateTokenRouter(serviceLayer))
+app.use('/.well-known/oauth-authorization-server', createDiscoveryRouter())
 // Called only by nginx's auth_request subrequest, never by a browser.
 app.use('/authz', createAuthzRouter(serviceLayer))
 

@@ -134,6 +134,7 @@ export const createOAuthRedisOps = (service: RedisService) => {
   const REFRESH_TOKEN_PREFIX = 'refresh_token:'
   const GOOGLE_TOKEN_PREFIX = 'google_token:' // JTI -> GoogleTokenData
   const JWT_REFRESH_PREFIX = 'jwt_refresh:' // Our refresh token -> JWTRefreshData
+  const CIMD_METADATA_PREFIX = 'cimd_metadata:' // CIMD client_id URL -> cached CimdMetadata + hash
 
   return {
     getPKCEState: <A, I>(sessionId: string, schema: Schema.Schema<A, I, never>) =>
@@ -201,5 +202,18 @@ export const createOAuthRedisOps = (service: RedisService) => {
 
     deleteJWTRefresh: (refreshToken: string) =>
       service.del(`${JWT_REFRESH_PREFIX}${refreshToken}`),
+
+    // Cache of fetched+validated CIMD documents, keyed by the client_id URL.
+    // A cache hit means the shadow-registered Hydra client is already
+    // up to date, so the auth request skips both the outbound fetch and
+    // the Hydra admin upsert.
+    getCimdMetadata: <A, I>(clientIdUrl: string, schema: Schema.Schema<A, I, never>) =>
+      service.getJSON(`${CIMD_METADATA_PREFIX}${clientIdUrl}`, schema),
+
+    setCimdMetadata: (clientIdUrl: string, data: unknown, ttlSeconds: number) =>
+      service.setJSON(`${CIMD_METADATA_PREFIX}${clientIdUrl}`, data, ttlSeconds),
+
+    deleteCimdMetadata: (clientIdUrl: string) =>
+      service.del(`${CIMD_METADATA_PREFIX}${clientIdUrl}`),
   }
 }

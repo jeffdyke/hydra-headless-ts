@@ -3,16 +3,23 @@
  * Uses RedisService from fp/services to store PKCE state with proper error handling
  */
 import { type ClientRequest } from 'http'
-import type { Socket } from 'net'
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import express from 'express'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { Redis } from 'ioredis'
+import { upsertCimdClient } from '../authFlow.js'
 import { appConfig } from '../config.js'
+import { CimdCacheEntrySchema } from '../fp/domain.js'
+import { CimdRedirectUriMismatch } from '../fp/errors.js'
+import { cimdContentHash, fetchCimdMetadata, isHttpsUrlClientId } from '../fp/services/cimd.js'
 import { RedisService, RedisServiceLive, createOAuthRedisOps } from '../fp/services/redis.js'
 import { syncLogger } from '../logging-effect.js'
-import type { PKCEState } from '../fp/domain.js'
+import { OAuth2ApiLayer } from './hydra.js'
+import type { OAuth2ApiService } from '../api/oauth2.js'
+import type { CimdMetadata, PKCEState } from '../fp/domain.js'
+import type { CimdError, HttpError, SchemaValidationError } from '../fp/errors.js'
 import type { Request, Response, NextFunction } from 'express'
+import type { Socket } from 'net'
 
 const app = express()
 app.use(express.json())
@@ -164,10 +171,97 @@ const proxyOptions = {
 }
 
 /**
+ * Layer providing both RedisService and OAuth2ApiService, for the CIMD
+ * pipeline below (fetch/validate a remote document, then shadow-register
+ * it into Hydra).
+ */
+const cimdLayer = Layer.merge(redisLayer, OAuth2ApiLayer)
+
+/**
+ * Describe a CIMD pipeline failure for the client-facing 400 response.
+ * Intentionally terse — details go to the server log via syncLogger, not
+ * to the (untrusted) requester.
+ */
+const describeCimdError = (error: CimdError | HttpError | SchemaValidationError): string => {
+  switch (error._tag) {
+    case 'CimdRedirectUriMismatch':
+      return 'redirect_uri is not registered for this client'
+    case 'CimdInvalidClientId':
+    case 'CimdClientIdMismatch':
+    case 'CimdSsrfBlocked':
+    case 'CimdRedirectRejected':
+    case 'CimdFetchTooLarge':
+      return 'client_id metadata document could not be fetched or validated'
+    default:
+      return 'failed to validate client'
+  }
+}
+
+/**
+ * Fetch (or reuse a cached, already-validated) CIMD document for
+ * `clientIdUrl`, check the request's redirect_uri against it, and — on a
+ * cache miss — shadow-register the client into Hydra's own admin DB so
+ * the proxied /oauth2/auth request that follows passes Hydra's native
+ * client/redirect_uri validation exactly as it would for a DCR client.
+ */
+const runCimdPipeline = (
+  clientIdUrl: string,
+  redirectUri: string
+): Effect.Effect<
+  CimdMetadata,
+  CimdError | HttpError | SchemaValidationError,
+  RedisService | OAuth2ApiService
+> =>
+  Effect.gen(function* () {
+    const redis = yield* RedisService
+    const redisOps = createOAuthRedisOps(redis)
+
+    const cached = yield* Effect.either(redisOps.getCimdMetadata(clientIdUrl, CimdCacheEntrySchema))
+    if (cached._tag === 'Right') {
+      const { metadata } = cached.right
+      if (!metadata.redirect_uris.includes(redirectUri)) {
+        return yield* Effect.fail(
+          new CimdRedirectUriMismatch({ clientId: clientIdUrl, redirectUri, allowed: metadata.redirect_uris })
+        )
+      }
+      return metadata
+    }
+
+    const metadata = yield* fetchCimdMetadata(clientIdUrl, appConfig.cimd)
+    if (!metadata.redirect_uris.includes(redirectUri)) {
+      return yield* Effect.fail(
+        new CimdRedirectUriMismatch({ clientId: clientIdUrl, redirectUri, allowed: metadata.redirect_uris })
+      )
+    }
+
+    const contentHash = cimdContentHash(metadata)
+    yield* upsertCimdClient(clientIdUrl, metadata, contentHash)
+
+    // A cache-write failure is not fatal — it only means the next request
+    // re-fetches/re-upserts (a no-op against Hydra, since the content hash
+    // won't have changed), same as the PKCE-state write above.
+    const cacheResult = yield* Effect.either(
+      redisOps.setCimdMetadata(
+        clientIdUrl,
+        { metadata, contentHash, fetchedAt: Date.now() },
+        appConfig.cimd.cacheTtlSeconds
+      )
+    )
+    if (cacheResult._tag === 'Left') {
+      syncLogger.error('Failed to cache CIMD metadata in Redis', {
+        clientIdUrl,
+        error: cacheResult.left,
+      })
+    }
+
+    return metadata
+  })
+
+/**
  * Enhanced proxy middleware with validation
  * Validates required OAuth2 parameters and returns 400 for fatal errors
  */
-const enhancedProxyMiddleware = (req: Request, res: Response, next: NextFunction) => {
+const enhancedProxyMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   if (req.path === '/oauth2/auth') {
     syncLogger.info('=== OAUTH2 AUTHORIZATION ENDPOINT ===', {
       method: req.method,
@@ -217,6 +311,28 @@ const enhancedProxyMiddleware = (req: Request, res: Response, next: NextFunction
         error: 'unsupported_response_type',
         error_description: 'Only response_type=code is supported',
       })
+    }
+
+    // CIMD (Client ID Metadata Document) clients present an https:// URL as
+    // client_id instead of a Hydra-issued DCR id. Existing DCR clients fall
+    // straight through unchanged — this only branches for URL-shaped ids.
+    if (appConfig.cimd.enabled && isHttpsUrlClientId(String(client_id))) {
+      const outcome = await Effect.runPromise(
+        Effect.either(
+          Effect.provide(runCimdPipeline(String(client_id), String(redirect_uri)), cimdLayer)
+        )
+      )
+      if (outcome._tag === 'Left') {
+        syncLogger.error('=== OAUTH2 AUTH ERROR: CIMD validation failed ===', {
+          client_id,
+          error: outcome.left,
+          timestamp: new Date().toISOString(),
+        })
+        return res.status(400).json({
+          error: 'invalid_client',
+          error_description: describeCimdError(outcome.left),
+        })
+      }
     }
 
     // Log PKCE parameters

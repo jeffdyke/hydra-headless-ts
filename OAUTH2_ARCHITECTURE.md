@@ -27,6 +27,21 @@ Client → POST /register → Receive client_id/secret → Use in flows
 
 **Solution**: This service acts as a bridge, implementing Hydra's login/consent interface while managing static Google OAuth credentials.
 
+## The CIMD Bridge (an alternative to DCR)
+
+**Client ID Metadata Documents** (CIMD, draft-ietf-oauth-client-id-metadata-document) are a newer alternative to DCR: instead of a registration call, the client's `client_id` *is* an `https://` URL, and this service fetches a JSON metadata document from that URL (the same kind of fields a DCR registration would produce — `redirect_uris`, `grant_types`, etc.) instead of looking one up in a database. There is no `client_secret` — CIMD is for public clients using PKCE, exactly like this service's existing DCR-registered clients.
+
+CIMD support is off by default (`CIMD_ENABLED`) and, when enabled, is implemented as a small pre-flight step in front of the existing `/oauth2/auth` proxy — not a parallel authorization flow. This was a deliberate choice: tracing the existing DCR bridge shows that Hydra's *only* independent contribution to this pipeline is validating `client_id`/`redirect_uri` against its own admin client DB when `/oauth2/auth` is proxied to it — login, consent, token issuance, and JWT minting are already fully local to this service and never re-validate the client against Hydra. So rather than reimplementing authorization-endpoint semantics for CIMD clients, this service **shadow-registers** them into Hydra's own client DB:
+
+1. `setup/proxy.ts`'s `enhancedProxyMiddleware` detects an `https://`-shaped `client_id` on `/oauth2/auth` (an opaque DCR client_id falls straight through, unchanged).
+2. `fp/services/cimd.ts` fetches the document at that URL and validates it against `CimdMetadataSchema` (`fp/domain.ts`). This is the SSRF-sensitive boundary of the feature, since the URL is client-supplied: only `https://`, only publicly-routable resolved addresses (checked and then *pinned* for the actual connection, closing the DNS-rebinding TOCTOU gap), no redirects followed, and hard timeout/size caps.
+3. The request's `redirect_uri` is checked against the document locally (fail fast, before touching Hydra).
+4. `authFlow.upsertCimdClient` idempotently mirrors the validated document into Hydra's admin client DB (`POST`/`PUT /admin/clients/{id}`, with `client_id` set explicitly to the URL — the public DCR endpoint always mints its own id, but the admin API accepts a caller-supplied one, which is what makes this possible), stamping a content hash into Hydra's own free-form `metadata` field so re-fetches are only re-applied when the remote document actually changes.
+5. A short-TTL Redis cache (`fp/services/redis.ts`'s `getCimdMetadata`/`setCimdMetadata`) avoids re-fetching and re-upserting on every single authorization request.
+6. Once shadow-registered, the proxied `/oauth2/auth` request continues exactly as it would for a DCR client — Hydra's own validation now passes, and login, consent, callback, and `/oauth2/token` require **zero** CIMD-specific changes, because none of them re-validate the client against Hydra today.
+
+The `/.well-known/oauth-authorization-server` discovery document (`routes/discovery-fp.ts`) advertises `client_id_metadata_document_supported: true` when the feature is enabled; it composes Hydra's own document rather than nginx blind-proxying it, since Hydra itself has no notion of CIMD.
+
 ## Architecture Diagram
 
 ```ascii

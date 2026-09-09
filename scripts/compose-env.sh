@@ -32,7 +32,7 @@ if [ -x /etc/init.d/hydra-mcp ]; then
   DEPLOYED=1
   BASE_COMPOSE="/src/hydra-headless-ts/docker-compose.yml"
   mcp_fragments=(/etc/hydra-headless-ts/docker-compose.mariadb-mcp.*.yml)
-  if [ ! -e "${mcp_fragments[0]}" ]; then
+  if [ ! -e "${mcp_fragments[1]}" ]; then
     echo "error: /etc/init.d/hydra-mcp exists but no /etc/hydra-headless-ts/docker-compose.mariadb-mcp.*.yml fragment was found" >&2
     exit 1
   fi

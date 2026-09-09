@@ -65,6 +65,50 @@ export class ParseError extends Data.TaggedError('ParseError')<{
 export type HttpError = NetworkError | HttpStatusError | TimeoutError | ParseError
 
 /**
+ * CIMD (Client ID Metadata Document) fetch/validation errors
+ */
+export class CimdInvalidClientId extends Data.TaggedError('CimdInvalidClientId')<{
+  clientId: string
+  reason: string
+}> {}
+
+export class CimdSsrfBlocked extends Data.TaggedError('CimdSsrfBlocked')<{
+  clientId: string
+  host: string
+  reason: string
+}> {}
+
+export class CimdFetchTooLarge extends Data.TaggedError('CimdFetchTooLarge')<{
+  clientId: string
+  maxBytes: number
+}> {}
+
+export class CimdRedirectRejected extends Data.TaggedError('CimdRedirectRejected')<{
+  clientId: string
+  status: number
+  location: string | null
+}> {}
+
+export class CimdClientIdMismatch extends Data.TaggedError('CimdClientIdMismatch')<{
+  clientId: string
+  documentClientId: string
+}> {}
+
+export class CimdRedirectUriMismatch extends Data.TaggedError('CimdRedirectUriMismatch')<{
+  clientId: string
+  redirectUri: string
+  allowed: readonly string[]
+}> {}
+
+export type CimdError =
+  | CimdInvalidClientId
+  | CimdSsrfBlocked
+  | CimdFetchTooLarge
+  | CimdRedirectRejected
+  | CimdClientIdMismatch
+  | CimdRedirectUriMismatch
+
+/**
  * OAuth2/PKCE validation errors
  */
 export class InvalidPKCE extends Data.TaggedError('InvalidPKCE')<{
@@ -184,3 +228,4 @@ export type AppError =
   | GoogleOAuthError
   | SessionError
   | ValidationError
+  | CimdError

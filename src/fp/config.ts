@@ -88,6 +88,20 @@ export interface SecurityConfig {
 }
 
 /**
+ * Client ID Metadata Document (CIMD) configuration
+ * Governs the alternative-to-DCR client registration bridge — see
+ * fp/services/cimd.ts. Off by default; enabling it opens a new outbound
+ * fetch surface (to URLs supplied by the client), so the SSRF-relevant
+ * limits below are deliberately conservative.
+ */
+export interface CimdConfig {
+  readonly enabled: boolean
+  readonly fetchTimeoutMs: number
+  readonly maxResponseBytes: number
+  readonly cacheTtlSeconds: number
+}
+
+/**
  * Complete application configuration
  */
 export interface AppConfig {
@@ -103,6 +117,7 @@ export interface AppConfig {
   readonly database: DatabaseConfig
   readonly google: GoogleOAuthConfig
   readonly security: SecurityConfig
+  readonly cimd: CimdConfig
 }
 
 /**
@@ -336,6 +351,16 @@ const securityConfig = (env: AppEnvironment, https: boolean, baseUrl: string): C
 }
 
 /**
+ * CIMD (Client ID Metadata Document) configuration
+ */
+const cimdConfig: Config.Config<CimdConfig> = Config.all({
+  enabled: Config.boolean('CIMD_ENABLED').pipe(Config.withDefault(false)),
+  fetchTimeoutMs: Config.integer('CIMD_FETCH_TIMEOUT_MS').pipe(Config.withDefault(3000)),
+  maxResponseBytes: Config.integer('CIMD_MAX_RESPONSE_BYTES').pipe(Config.withDefault(65536)),
+  cacheTtlSeconds: Config.integer('CIMD_CACHE_TTL_SECONDS').pipe(Config.withDefault(300)),
+})
+
+/**
  * Complete application configuration
  */
 export const appConfigEffect = Effect.gen(function* () {
@@ -377,6 +402,8 @@ export const appConfigEffect = Effect.gen(function* () {
     Config.withDefault('https://claude.ai/api/mcp/auth_callback')
   )
 
+  const cimd = yield* cimdConfig
+
   return {
     environment: env,
     domain,
@@ -390,6 +417,7 @@ export const appConfigEffect = Effect.gen(function* () {
     database,
     google,
     security,
+    cimd,
   }
 })
 
