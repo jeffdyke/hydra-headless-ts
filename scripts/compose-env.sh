@@ -40,7 +40,7 @@ if [ -x /etc/init.d/hydra-mcp ]; then
     echo "error: expected exactly one mariadb-mcp compose fragment in /etc/hydra-headless-ts, found: ${mcp_fragments[*]}" >&2
     exit 1
   fi
-  MCP_COMPOSE="${mcp_fragments[0]}"
+  MCP_COMPOSE="${mcp_fragments[1]}"
   COMPOSE_PROJECT="hydra-mcp"
   # docker-compose.mariadb-mcp.<env>.yml -> <env> (e.g. "prod", "staging"), the
   # same <env> salt/hydra-headless-ts's init.sls used to render this fragment
