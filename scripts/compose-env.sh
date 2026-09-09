@@ -64,3 +64,7 @@ COMPOSE_ARGS_STR="${COMPOSE_ARGS[*]}"
 compose() {
   $DOCKER_CMD compose "${COMPOSE_ARGS[@]}" "$@"
 }
+
+hydraComposeCmd() {
+  echo "$DOCKER_CMD compose ${COMPOSE_ARGS[*]}"
+}

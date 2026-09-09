@@ -103,7 +103,7 @@ else
 Put the AUTH_FLOW_CLIENT_ID above in /etc/hydra-headless-ts/local.env, then
 restart the app:
 
-  $DOCKER_CMD compose $COMPOSE_ARGS_STR restart headless-ts
+  $DOCKER_CMD compose $COMPOSE_ARGS_STR up -d --force-recreate headless-ts
 EOF
 fi
 
