@@ -78,9 +78,10 @@ config.
 
 Claude was configured with https://auth.mycompany.tld
 
-It then will probe this endpoint for the following, which are redirects in nginx
+It then will probe this endpoint for the following:
 
-- /.well-known/(oauth-authorization-server|oauth-protected-resource) > [All In One Config](https://auth.mycompany.tld/.well-known/openid-configuration)
+- `/.well-known/oauth-protected-resource` is still a plain nginx redirect (static JSON, `build/nginx/www/auth/.well-known/oauth-protected-resource/`).
+- `/.well-known/oauth-authorization-server` is **no longer** a blind nginx redirect straight to Hydra's own `/.well-known/openid-configuration`. It's composed by the app (`src/routes/discovery-fp.ts`): fetches Hydra's document server-side, and — when `CIMD_ENABLED=true` — merges in `client_id_metadata_document_supported: true` so CIMD-aware clients can auto-detect support. Everything Hydra publishes natively (`registration_endpoint`, `jwks_uri`, etc.) still passes through untouched; DCR keeps working exactly as described below.
 
 This tells Claude the next urls of interest are:
 
@@ -100,6 +101,7 @@ Supporting code exists for both, especially `/oauth2/token` more forthcoming.
 
 ## Current state
 
+- Before any of this, if `CIMD_ENABLED=true` and the request's `client_id` is `https://`-shaped rather than a Hydra-issued DCR id, `setup/proxy.ts`'s `enhancedProxyMiddleware` fetches and validates that URL as a Client ID Metadata Document (`fp/services/cimd.ts`) and shadow-registers it into Hydra's client DB (`authFlow.upsertCimdClient`) *before* the proxy hop below runs. See the "CIMD Bridge" section of `OAUTH2_ARCHITECTURE.md` for why this is a pre-flight step rather than a separate flow. A DCR client_id skips this branch entirely.
 - claude, with its configuration, makes a request
   - The endpoint is `/oauth2/auth`
     - Proxy code:

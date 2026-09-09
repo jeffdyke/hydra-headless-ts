@@ -32,7 +32,7 @@ if [ -x /etc/init.d/hydra-mcp ]; then
   DEPLOYED=1
   BASE_COMPOSE="/src/hydra-headless-ts/docker-compose.yml"
   mcp_fragments=(/etc/hydra-headless-ts/docker-compose.mariadb-mcp.*.yml)
-  if [ ! -e "${mcp_fragments[0]}" ]; then
+  if [ ! -e "${mcp_fragments[1]}" ]; then
     echo "error: /etc/init.d/hydra-mcp exists but no /etc/hydra-headless-ts/docker-compose.mariadb-mcp.*.yml fragment was found" >&2
     exit 1
   fi
@@ -40,7 +40,7 @@ if [ -x /etc/init.d/hydra-mcp ]; then
     echo "error: expected exactly one mariadb-mcp compose fragment in /etc/hydra-headless-ts, found: ${mcp_fragments[*]}" >&2
     exit 1
   fi
-  MCP_COMPOSE="${mcp_fragments[0]}"
+  MCP_COMPOSE="${mcp_fragments[1]}"
   COMPOSE_PROJECT="hydra-mcp"
   # docker-compose.mariadb-mcp.<env>.yml -> <env> (e.g. "prod", "staging"), the
   # same <env> salt/hydra-headless-ts's init.sls used to render this fragment
@@ -63,4 +63,8 @@ COMPOSE_ARGS_STR="${COMPOSE_ARGS[*]}"
 
 compose() {
   $DOCKER_CMD compose "${COMPOSE_ARGS[@]}" "$@"
+}
+
+hydraComposeCmd() {
+  echo "$DOCKER_CMD compose ${COMPOSE_ARGS[*]}"
 }

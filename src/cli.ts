@@ -168,9 +168,13 @@ const uuidRegexp = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}
  * Command handlers
  */
 type CommandHandler = (...args: string[]) => Promise<void>;
+// A client-id is either a Hydra-issued DCR id (UUID) or a CIMD client_id,
+// which is itself an https:// URL (see fp/services/cimd.ts).
 const ClientIdV = pipe(
   Schema.NonEmptyString,
-  Schema.pattern(uuidRegexp)
+  Schema.filter((s) => uuidRegexp.test(s) || s.startsWith('https://'), {
+    message: () => 'client-id must be a UUID (DCR) or an https:// URL (CIMD)',
+  })
 )
 
 type ClientIdV = Schema.Schema.Type<typeof ClientIdV>
